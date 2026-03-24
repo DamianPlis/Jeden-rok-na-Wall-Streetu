@@ -221,8 +221,10 @@ export default function App() {
   // Auth Listener
   useEffect(() => {
     return onAuthStateChanged(auth, (u) => {
+      console.log('Auth state changed:', u ? `User: ${u.email}` : 'No user');
       setUser(u);
       setLoading(false);
+      if (u) setError(null);
     });
   }, []);
 
@@ -360,10 +362,16 @@ export default function App() {
   };
 
   const handleLogin = async () => {
+    setError(null);
     try {
       await signInWithPopup(auth, new GoogleAuthProvider());
-    } catch (err) {
-      setError('Přihlášení se nezdařilo. Zkuste to prosím znovu.');
+    } catch (err: any) {
+      console.error('Login error:', err);
+      if (err.code === 'auth/unauthorized-domain') {
+        setError('Tato doména není v Firebase konzoli povolena. Přidejte ji prosím do Authorized domains.');
+      } else {
+        setError(`Přihlášení se nezdařilo: ${err.message || 'Zkuste to prosím znovu.'}`);
+      }
     }
   };
 
@@ -562,6 +570,14 @@ export default function App() {
         <div className="max-w-md w-full bg-[#1a1a1a] border-2 border-[#2a2b2e] p-8 shadow-[8px_8px_0px_0px_rgba(255,255,255,0.05)]">
           <h1 className="text-3xl font-bold mb-6 italic serif text-white">Jeden rok na Wall Street</h1>
           <p className="mb-8 text-gray-400">Přihlaste se do banky a začněte svou simulaci.</p>
+          
+          {error && (
+            <div className="mb-6 p-4 bg-red-500/10 border-2 border-red-500 text-red-500 text-sm font-bold flex items-center gap-2">
+              <AlertCircle size={18} />
+              {error}
+            </div>
+          )}
+
           <button 
             onClick={handleLogin}
             className="w-full flex items-center justify-center gap-2 bg-white text-black p-4 hover:bg-gray-200 transition-colors font-bold"
