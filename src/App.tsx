@@ -14,6 +14,7 @@ import {
   getDocs,
   collection,
   increment,
+  arrayUnion,
   query,
   where,
   orderBy,
@@ -547,14 +548,13 @@ export default function App() {
       await updateDoc(doc(db, 'rooms', roomId, 'portfolios', user.uid), {
         cash: portfolio.cash - totalCost,
         [`shares.${ticker}`]: portfolio.shares[ticker] + amount,
-        trades: [...(portfolio.trades || []), newTrade]
+        trades: arrayUnion(newTrade)
       });
 
       const priceChange = PRICE_IMPACT * amount;
       const nextPrice = currentPrice + priceChange;
 
       // Record trade as a candle
-      const tickerHistory = gameState.history[ticker] || [];
       const newCandle: CandleData = {
         time: Date.now(),
         open: currentPrice,
@@ -564,8 +564,8 @@ export default function App() {
       };
 
       await updateDoc(doc(db, 'rooms', roomId), {
-        [`gameState.prices.${ticker}`]: nextPrice,
-        [`gameState.history.${ticker}`]: [...tickerHistory, newCandle]
+        [`gameState.prices.${ticker}`]: increment(priceChange),
+        [`gameState.history.${ticker}`]: arrayUnion(newCandle)
       });
 
     } else { // Sell
@@ -586,14 +586,13 @@ export default function App() {
       await updateDoc(doc(db, 'rooms', roomId, 'portfolios', user.uid), {
         cash: portfolio.cash + netProceeds,
         [`shares.${ticker}`]: portfolio.shares[ticker] + amount,
-        trades: [...(portfolio.trades || []), newTrade]
+        trades: arrayUnion(newTrade)
       });
 
       const priceChange = PRICE_IMPACT * amount; // amount is negative
       const nextPrice = currentPrice + priceChange;
 
       // Record trade as a candle
-      const tickerHistory = gameState.history[ticker] || [];
       const newCandle: CandleData = {
         time: Date.now(),
         open: currentPrice,
@@ -603,8 +602,8 @@ export default function App() {
       };
 
       await updateDoc(doc(db, 'rooms', roomId), {
-        [`gameState.prices.${ticker}`]: nextPrice,
-        [`gameState.history.${ticker}`]: [...tickerHistory, newCandle]
+        [`gameState.prices.${ticker}`]: increment(priceChange),
+        [`gameState.history.${ticker}`]: arrayUnion(newCandle)
       });
     }
     setError(null);
