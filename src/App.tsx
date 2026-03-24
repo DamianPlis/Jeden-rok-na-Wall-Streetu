@@ -523,6 +523,10 @@ export default function App() {
       setError('Pasivní fond je k dispozici pouze v Q0.');
       return;
     }
+    if (portfolio.isPassiveLocked) {
+      setError('Do pasivního fondu můžete vložit prostředky pouze jednou.');
+      return;
+    }
 
     if (amount > 0) {
       if (portfolio.cash < amount) {
@@ -531,7 +535,8 @@ export default function App() {
       }
       await updateDoc(doc(db, 'rooms', roomId, 'portfolios', user.uid), {
         cash: portfolio.cash - amount,
-        passiveFund: portfolio.passiveFund + amount
+        passiveFund: portfolio.passiveFund + amount,
+        isPassiveLocked: true
       });
     }
   };
@@ -960,7 +965,7 @@ export default function App() {
             )}
 
             {/* Passive Fund (Q0 only) */}
-            {gameState?.currentQuarter === 0 && (
+            {gameState?.currentQuarter === 0 && !portfolio?.isPassiveLocked && (
               <div className="bg-blue-900/20 border-2 border-blue-500/50 p-6 shadow-[8px_8px_0px_0px_rgba(255,255,255,0.05)]">
                 <h3 className="text-xs uppercase text-blue-400 opacity-50 mb-2 italic serif">Příležitost v pasivním fondu</h3>
                 <p className="text-sm mb-4 text-blue-100/70">Uzamkněte svůj kapitál pro garantovaný výnos 8 % na konci Q4. Vysoká stabilita, nulová volatilita.</p>
