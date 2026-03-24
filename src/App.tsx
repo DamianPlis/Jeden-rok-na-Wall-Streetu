@@ -279,6 +279,11 @@ export default function App() {
 
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
+  // Reset locking state when room changes
+  useEffect(() => {
+    setIsLockingPassive(false);
+  }, [roomId]);
+
   // Auth Listener
   useEffect(() => {
     return onAuthStateChanged(auth, (u) => {
@@ -606,7 +611,7 @@ export default function App() {
   };
 
   const handleLockPassive = async (amount: number) => {
-    if (!user || !portfolio || !gameState || !roomId) return;
+    if (!user || !portfolio || !gameState || !roomId || isLockingPassive) return;
     if (gameState.currentQuarter > 0) {
       setError('Pasivní fond je k dispozici pouze v Q0.');
       return;
@@ -628,7 +633,11 @@ export default function App() {
           passiveFund: portfolio.passiveFund + amount,
           isPassiveLocked: true
         });
-      } finally {
+        // We don't set isLockingPassive(false) here because we want the UI
+        // to stay locked until the onSnapshot listener updates the portfolio state.
+      } catch (err: any) {
+        console.error("Lock passive error:", err);
+        setError('Nepodařilo se uzamknout prostředky. Zkuste to prosím znovu.');
         setIsLockingPassive(false);
       }
     }
