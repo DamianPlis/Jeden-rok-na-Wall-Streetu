@@ -34,6 +34,7 @@ import {
 } from './types';
 import { 
   MARKET_SCHEDULE, 
+  MONTH_NAMES,
   INITIAL_CAPITAL_MIN,
   INITIAL_CAPITAL_MAX,
   PASSIVE_FUND_RETURN,
@@ -71,14 +72,15 @@ import {
   ResponsiveContainer,
   Cell,
   ReferenceLine,
-  Scatter
+  Scatter,
+  Line
 } from 'recharts';
 
 const PRICE_IMPACT = 2.5; // Increased from 0.5 for more noticeable effect
 
 interface StockChartProps {
   ticker: keyof StockPrices;
-  currentQuarter: number;
+  currentMonth: number;
   history: { [ticker: string]: CandleData[] };
   currentPrice: number;
   height?: string;
@@ -86,7 +88,7 @@ interface StockChartProps {
   trades?: Trade[];
 }
 
-function StockChart({ ticker, currentQuarter, history, currentPrice, height = "h-80", isFocusMode = false, trades = [] }: StockChartProps) {
+function StockChart({ ticker, currentMonth, history, currentPrice, height = "h-80", isFocusMode = false, trades = [] }: StockChartProps) {
   const data = useMemo(() => {
     const tickerHistory = history[ticker] || [];
     
@@ -101,7 +103,17 @@ function StockChart({ ticker, currentQuarter, history, currentPrice, height = "h
 
     const tickerTrades = trades.filter(t => t.ticker === ticker);
 
-    const allData = [...tickerHistory, liveCandle].map((c, idx) => {
+    const baseData = [...tickerHistory, liveCandle];
+    // Ensure we have at least 2 points for the chart to render properly
+    if (baseData.length === 1) {
+      const dummy: CandleData = {
+        ...baseData[0],
+        time: baseData[0].time - 60000,
+      };
+      baseData.unshift(dummy);
+    }
+
+    const allData = baseData.map((c, idx) => {
       const isUp = c.close >= c.open;
       // Find if a trade happened near this candle's time
       // Since candles are created on trades, we can match them
@@ -152,8 +164,8 @@ function StockChart({ ticker, currentQuarter, history, currentPrice, height = "h
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart 
           data={data} 
-          margin={{ top: 40, right: 0, left: -20, bottom: 0 }}
-          barCategoryGap={1}
+          margin={{ top: 40, right: 0, left: 0, bottom: 0 }}
+          barCategoryGap={0}
         >
           <CartesianGrid strokeDasharray="0" stroke="#111" vertical={true} horizontal={true} />
           <XAxis dataKey="name" hide={true} />
@@ -163,7 +175,7 @@ function StockChart({ ticker, currentQuarter, history, currentPrice, height = "h
             fontSize={9}
             tickLine={false}
             axisLine={false}
-            domain={[(dataMin: number) => dataMin * 0.98, (dataMax: number) => dataMax * 1.02]}
+            domain={[(dataMin: number) => dataMin * 0.9, (dataMax: number) => dataMax * 1.1]}
             orientation="right"
             tickFormatter={(val) => `$${val}`}
           />
@@ -219,9 +231,14 @@ function StockChart({ ticker, currentQuarter, history, currentPrice, height = "h
           <Bar 
             yAxisId="price"
             dataKey="bodyRange" 
-            shape={<CandlestickShape />}
+            shape={CandlestickShape}
             isAnimationActive={false}
+            fill="#22c55e"
           />
+
+          {/* Hidden lines to ensure YAxis domain covers high/low */}
+          <Line yAxisId="price" dataKey="high" stroke="none" dot={false} isAnimationActive={false} />
+          <Line yAxisId="price" dataKey="low" stroke="none" dot={false} isAnimationActive={false} />
 
           {trades.length > 0 && (
             <Scatter
@@ -275,10 +292,15 @@ export default function App() {
   const [isFocusMode, setIsFocusMode] = useState(false);
   const [focusTicker, setFocusTicker] = useState<keyof StockPrices>('AAPL');
   const [newRoomName, setNewRoomName] = useState("");
-
   const [isLockingPassive, setIsLockingPassive] = useState(false);
-
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [timeLeft, setTimeLeft] = useState<number>(60);
+
+  const isAdmin = useMemo(() => {
+    if (!user || !roomId) return false;
+    const room = rooms.find(r => r.id === roomId);
+    return room?.createdBy === user.uid;
+  }, [user, roomId, rooms]);
 
   // Reset locking state when room changes
   useEffect(() => {
@@ -319,7 +341,7 @@ export default function App() {
         const data = snap.data() as Room;
         setGameState(data.gameState);
         isCreator = data.createdBy === user.uid;
-        if (data.gameState.currentQuarter === 4) {
+        if (data.gameState.currentMonth === 11) {
           setShowGameOver(true);
         } else {
           setShowGameOver(false);
@@ -381,39 +403,66 @@ export default function App() {
   useEffect(() => {
     if (!portfolio || !gameState || !user || !roomId) return;
 
-    // Q3 Dividend
-    if (gameState.currentQuarter === 3 && !portfolio.isQ3DividendPaid) {
-      const dividend = portfolio.shares.WMT * 10;
+    // Monthly Dividend (WMT pays $2 every month)
+    const month = gameState.currentMonth;
+    if (!portfolio.isDividendPaid?.[month]) {
+      const dividend = portfolio.shares.WMT * 2;
+      const updatedDividends = { ...(portfolio.isDividendPaid || {}), [month]: true };
+      
       if (dividend > 0) {
         updateDoc(doc(db, 'rooms', roomId, 'portfolios', user.uid), {
           cash: portfolio.cash + dividend,
-          isQ3DividendPaid: true
+          isDividendPaid: updatedDividends
         });
       } else {
-        updateDoc(doc(db, 'rooms', roomId, 'portfolios', user.uid), { isQ3DividendPaid: true });
+        updateDoc(doc(db, 'rooms', roomId, 'portfolios', user.uid), { isDividendPaid: updatedDividends });
       }
     }
 
-    // Q4 Final Return
-    if (gameState.currentQuarter === 4 && !portfolio.isQ4FinalPaid) {
+    // December Final Return
+    if (gameState.currentMonth === 11 && !portfolio.isFinalPaid) {
       const finalReturn = portfolio.passiveFund * (1 + PASSIVE_FUND_RETURN);
       if (finalReturn > 0) {
         updateDoc(doc(db, 'rooms', roomId, 'portfolios', user.uid), {
           cash: portfolio.cash + finalReturn,
           passiveFund: 0,
-          isQ4FinalPaid: true
+          isFinalPaid: true
         });
       } else {
-        updateDoc(doc(db, 'rooms', roomId, 'portfolios', user.uid), { isQ4FinalPaid: true });
+        updateDoc(doc(db, 'rooms', roomId, 'portfolios', user.uid), { isFinalPaid: true });
       }
     }
-  }, [gameState?.currentQuarter, portfolio?.uid, roomId]);
+  }, [gameState?.currentMonth, portfolio?.uid, roomId]);
+
+  // Timer Logic
+  useEffect(() => {
+    if (!gameState || gameState.isPaused || !gameState.nextTickAt) {
+      setTimeLeft(60);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const remaining = Math.max(0, Math.ceil((gameState.nextTickAt! - now) / 1000));
+      setTimeLeft(remaining);
+
+      if (remaining === 0 && isAdmin) {
+        handleNextMonth();
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [gameState?.nextTickAt, gameState?.isPaused, isAdmin]);
 
   const handleCreateRoom = async () => {
     if (!user || !newRoomName.trim()) return;
     
     const initialState: GameState = {
-      ...MARKET_SCHEDULE[0].state,
+      currentMonth: 0,
+      isPaused: true,
+      nextTickAt: null,
+      sentiment: MARKET_SCHEDULE[0].state.sentiment,
+      newsFlash: MARKET_SCHEDULE[0].state.newsFlash,
       prices: MARKET_SCHEDULE[0].prices,
       history: {
         AAPL: [{ time: Date.now(), open: MARKET_SCHEDULE[0].prices.AAPL, high: MARKET_SCHEDULE[0].prices.AAPL, low: MARKET_SCHEDULE[0].prices.AAPL, close: MARKET_SCHEDULE[0].prices.AAPL }],
@@ -458,42 +507,35 @@ export default function App() {
     setRoomId(null);
   };
 
-  const isAdmin = useMemo(() => {
-    if (!user || !roomId) return false;
-    const room = rooms.find(r => r.id === roomId);
-    return room?.createdBy === user.uid;
-  }, [user, roomId, rooms]);
+  const handleNextMonth = async () => {
+    if (!isAdmin || !gameState || !roomId) return;
 
-  const handleNextQuarter = async () => {
-    if (!isAdmin) {
-      setError('Pouze správce místnosti může posunout čas trhu.');
-      return;
-    }
-    if (!gameState || !roomId) return;
-
-    if (gameState.currentQuarter >= 4) {
-      setError('Rok skončil.');
+    if (gameState.currentMonth >= 11) {
+      await updateDoc(doc(db, 'rooms', roomId), {
+        'gameState.isPaused': true,
+        'gameState.nextTickAt': null
+      });
       return;
     }
 
-    const nextQ = gameState.currentQuarter + 1;
-    const schedule = MARKET_SCHEDULE[nextQ];
+    const nextM = gameState.currentMonth + 1;
+    const schedule = MARKET_SCHEDULE[nextM];
     const randomNews = schedule.newsPool[Math.floor(Math.random() * schedule.newsPool.length)];
     
     const nextPrices = { ...schedule.prices };
     
     // Prepare updates for each ticker
     const updates: any = {
-      'gameState.currentQuarter': nextQ,
+      'gameState.currentMonth': nextM,
       'gameState.sentiment': schedule.state.sentiment,
       'gameState.prices': nextPrices,
-      'gameState.newsFlash': randomNews
+      'gameState.newsFlash': randomNews,
+      'gameState.nextTickAt': Date.now() + 60000
     };
 
     (['AAPL', 'NVDA', 'WMT'] as const).forEach(ticker => {
       const tickerHistory = gameState.history?.[ticker] || [];
       const lastCandle = tickerHistory[tickerHistory.length - 1];
-      // Use the current price as the open for the next quarter's candle
       const open = gameState.prices[ticker] || (lastCandle ? lastCandle.close : 100);
       const close = nextPrices[ticker];
       
@@ -511,16 +553,38 @@ export default function App() {
     try {
       await updateDoc(doc(db, 'rooms', roomId), updates);
     } catch (err) {
-      console.error("Failed to advance quarter:", err);
-      setError('Nepodařilo se posunout čas trhu. Zkuste to prosím znovu.');
+      console.error("Failed to advance month:", err);
     }
+  };
+
+  const handleTogglePause = async () => {
+    if (!isAdmin || !gameState || !roomId) return;
+    
+    const newPaused = !gameState.isPaused;
+    await updateDoc(doc(db, 'rooms', roomId), {
+      'gameState.isPaused': newPaused,
+      'gameState.nextTickAt': newPaused ? null : Date.now() + (timeLeft * 1000)
+    });
+  };
+
+  const handleStartGame = async () => {
+    if (!isAdmin || !gameState || !roomId) return;
+    
+    await updateDoc(doc(db, 'rooms', roomId), {
+      'gameState.isPaused': false,
+      'gameState.nextTickAt': Date.now() + 60000
+    });
   };
 
   const handleResetGame = async () => {
     if (!isAdmin || !roomId) return;
     
     const initialState: GameState = {
-      ...MARKET_SCHEDULE[0].state,
+      currentMonth: 0,
+      isPaused: true,
+      nextTickAt: null,
+      sentiment: MARKET_SCHEDULE[0].state.sentiment,
+      newsFlash: MARKET_SCHEDULE[0].state.newsFlash,
       prices: MARKET_SCHEDULE[0].prices,
       history: {
         AAPL: [{ time: Date.now(), open: MARKET_SCHEDULE[0].prices.AAPL, high: MARKET_SCHEDULE[0].prices.AAPL, low: MARKET_SCHEDULE[0].prices.AAPL, close: MARKET_SCHEDULE[0].prices.AAPL }],
@@ -622,8 +686,8 @@ export default function App() {
 
   const handleLockPassive = async (amount: number) => {
     if (!user || !portfolio || !gameState || !roomId || isLockingPassive) return;
-    if (gameState.currentQuarter > 0) {
-      setError('Pasivní fond je k dispozici pouze v Q0.');
+    if (gameState.currentMonth > 0) {
+      setError('Pasivní fond je k dispozici pouze v lednu.');
       return;
     }
     if (portfolio.isPassiveLocked) {
@@ -656,7 +720,7 @@ export default function App() {
   const handleTriggerEvent = async () => {
     if (!isAdmin || !gameState || !roomId) return;
     
-    const schedule = MARKET_SCHEDULE[gameState.currentQuarter];
+    const schedule = MARKET_SCHEDULE[gameState.currentMonth];
     const randomNews = schedule.newsPool[Math.floor(Math.random() * schedule.newsPool.length)];
     
     await updateDoc(doc(db, 'rooms', roomId), { 
@@ -666,7 +730,7 @@ export default function App() {
 
   const renderASCIIChart = (ticker: keyof StockPrices) => {
     if (!gameState) return null;
-    const history = Array.from({ length: gameState.currentQuarter + 1 }, (_, i) => MARKET_SCHEDULE[i].prices[ticker]);
+    const history = Array.from({ length: gameState.currentMonth + 1 }, (_, i) => MARKET_SCHEDULE[i].prices[ticker]);
     const max = Math.max(...Object.values(MARKET_SCHEDULE).map(s => s.prices[ticker]));
     const min = Math.min(...Object.values(MARKET_SCHEDULE).map(s => s.prices[ticker]));
     
@@ -676,7 +740,7 @@ export default function App() {
       return chars[height] || ' ';
     }).join('');
 
-    return `[ ${bars.padEnd(5, ' ')} ] $${MARKET_SCHEDULE[gameState.currentQuarter].prices[ticker]}`;
+    return `[ ${bars.padEnd(5, ' ')} ] $${MARKET_SCHEDULE[gameState.currentMonth].prices[ticker]}`;
   };
 
   if (loading) return <div className="min-h-screen bg-[#0a0a0a] text-[#e0e0e0] flex items-center justify-center font-mono">Loading Simulation...</div>;
@@ -829,10 +893,40 @@ export default function App() {
 
         {/* Market Status */}
         {!isFocusMode && (
-          <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <section className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div className="bg-[#1a1a1a] border-2 border-[#2a2b2e] p-6 shadow-[4px_4px_0px_0px_rgba(255,255,255,0.05)]">
-              <h2 className="text-xs uppercase opacity-50 mb-2 italic serif">Aktuální čtvrtletí</h2>
-              <div className="text-4xl font-bold text-white">Q{gameState?.currentQuarter ?? 0}</div>
+              <h2 className="text-xs uppercase opacity-50 mb-2 italic serif">Aktuální měsíc</h2>
+              <div className="text-4xl font-bold text-white uppercase tracking-tighter">
+                {MONTH_NAMES[gameState?.currentMonth ?? 0]}
+              </div>
+            </div>
+            <div className="bg-[#1a1a1a] border-2 border-[#2a2b2e] p-6 shadow-[4px_4px_0px_0px_rgba(255,255,255,0.05)] flex flex-col justify-between">
+              <h2 className="text-xs uppercase opacity-50 mb-2 italic serif">Další měsíc za</h2>
+              <div className={cn(
+                "text-5xl font-black tabular-nums",
+                timeLeft <= 10 ? "text-red-500 animate-pulse" : "text-white"
+              )}>
+                {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+              </div>
+              {isAdmin && (
+                <div className="flex gap-2 mt-4">
+                  {gameState?.nextTickAt ? (
+                    <button 
+                      onClick={handleTogglePause}
+                      className="flex-1 bg-white text-black text-[10px] font-bold py-1 hover:bg-gray-200 uppercase"
+                    >
+                      {gameState.isPaused ? 'Pokračovat' : 'Pozastavit'}
+                    </button>
+                  ) : (
+                    <button 
+                      onClick={handleStartGame}
+                      className="flex-1 bg-green-600 text-white text-[10px] font-bold py-1 hover:bg-green-500 uppercase"
+                    >
+                      Spustit hru
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
             <div className={cn(
               "border-2 border-[#2a2b2e] p-6 shadow-[4px_4px_0px_0px_rgba(255,255,255,0.05)]",
@@ -918,7 +1012,7 @@ export default function App() {
                 <div className="flex-1 relative">
                   <StockChart 
                     ticker={focusTicker} 
-                    currentQuarter={gameState?.currentQuarter ?? 0} 
+                    currentMonth={gameState?.currentMonth ?? 0} 
                     history={gameState?.history || {}}
                     currentPrice={currentPrices?.[focusTicker] || 100}
                     height="h-full"
@@ -1011,8 +1105,8 @@ export default function App() {
               )}>
                 {(['AAPL', 'NVDA', 'WMT'] as const).map((ticker) => {
                   const price = currentPrices?.[ticker] ?? 100;
-                  const prevPrice = gameState && gameState.currentQuarter > 0 
-                    ? MARKET_SCHEDULE[gameState.currentQuarter - 1].prices[ticker] 
+                  const prevPrice = gameState && gameState.currentMonth > 0 
+                    ? MARKET_SCHEDULE[gameState.currentMonth - 1].prices[ticker] 
                     : 100;
                   const diff = price - prevPrice;
 
@@ -1044,7 +1138,7 @@ export default function App() {
                       <div className="w-full">
                         <StockChart 
                           ticker={ticker} 
-                          currentQuarter={gameState?.currentQuarter ?? 0} 
+                          currentMonth={gameState?.currentMonth ?? 0} 
                           history={gameState?.history || {}}
                           currentPrice={currentPrices?.[ticker] || 100}
                           height={isFocusMode ? "h-96" : "h-64"}
@@ -1058,7 +1152,7 @@ export default function App() {
             </div>
 
             {/* Trading Controls */}
-            {!isFocusMode && gameState && gameState.currentQuarter < 4 && (
+            {!isFocusMode && gameState && gameState.currentMonth < 11 && (
               <div className="bg-[#1a1a1a] border-2 border-[#2a2b2e] p-6 shadow-[8px_8px_0px_0px_rgba(255,255,255,0.05)]">
                 <h3 className="text-xs uppercase opacity-50 mb-4 italic serif">Obchodní parket</h3>
                 <div className="grid grid-cols-3 gap-4">
@@ -1084,7 +1178,7 @@ export default function App() {
             )}
 
             {/* Passive Fund (Q0 only) */}
-            {gameState?.currentQuarter === 0 && !portfolio?.isPassiveLocked && !isLockingPassive && (
+            {gameState?.currentMonth === 0 && !portfolio?.isPassiveLocked && !isLockingPassive && (
               <div className="bg-blue-900/20 border-2 border-blue-500/50 p-6 shadow-[8px_8px_0px_0px_rgba(255,255,255,0.05)]">
                 <h3 className="text-xs uppercase text-blue-400 opacity-50 mb-2 italic serif">Příležitost v pasivním fondu</h3>
                 <p className="text-sm mb-4 text-blue-100/70">Uzamkněte svůj kapitál pro garantovaný výnos 8 % na konci Q4. Vysoká stabilita, nulová volatilita.</p>
@@ -1143,7 +1237,7 @@ export default function App() {
                         <ShieldAlert size={14} /> Pasivní fond
                       </div>
                       <div className="text-2xl font-bold text-white">${portfolio?.passiveFund.toLocaleString()}</div>
-                      <div className="text-[10px] opacity-50">Uzamčeno do Q4 (+8%)</div>
+                      <div className="text-[10px] opacity-50">Uzamčeno do prosince (+8%)</div>
                     </div>
                   </div>
 
@@ -1169,13 +1263,21 @@ export default function App() {
                   </div>
                   <div className="flex flex-col gap-2">
                     <div className="flex gap-2">
-                      <button 
-                        onClick={handleNextQuarter}
-                        disabled={gameState?.currentQuarter === 4}
-                        className="flex-[2] bg-yellow-600 text-black py-4 font-bold flex items-center justify-center gap-2 hover:bg-yellow-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        DALŠÍ ČTVRTLETÍ <ChevronRight size={20} />
-                      </button>
+                      {gameState?.nextTickAt ? (
+                        <button 
+                          onClick={handleTogglePause}
+                          className="flex-[2] bg-yellow-600 text-black py-4 font-bold flex items-center justify-center gap-2 hover:bg-yellow-500 transition-colors"
+                        >
+                          {gameState.isPaused ? 'POKRAČOVAT V SIMULACI' : 'POZASTAVIT SIMULACI'}
+                        </button>
+                      ) : (
+                        <button 
+                          onClick={handleStartGame}
+                          className="flex-[2] bg-green-600 text-white py-4 font-bold flex items-center justify-center gap-2 hover:bg-green-500 transition-colors"
+                        >
+                          SPUSTIT SIMULACI
+                        </button>
+                      )}
                       <button 
                         onClick={handleTriggerEvent}
                         className="flex-1 border-2 border-yellow-600 text-yellow-500 py-4 font-bold flex items-center justify-center gap-2 hover:bg-yellow-600/10 transition-colors"
@@ -1187,15 +1289,15 @@ export default function App() {
                       onClick={handleResetGame}
                       className={cn(
                         "w-full py-3 font-bold flex items-center justify-center gap-2 transition-colors",
-                        gameState?.currentQuarter === 4 
+                        gameState?.currentMonth === 11 
                           ? "bg-white text-black hover:bg-gray-200" 
                           : "border-2 border-white text-white hover:bg-white/10"
                       )}
                     >
-                      <RefreshCw size={18} /> {gameState?.currentQuarter === 4 ? 'RESETOVAT SIMULACI' : 'VYNUTIT RESET'}
+                      <RefreshCw size={18} /> {gameState?.currentMonth === 11 ? 'RESETOVAT SIMULACI' : 'VYNUTIT RESET'}
                     </button>
                   </div>
-                  <p className="text-[10px] text-yellow-500 mt-2 opacity-70">Pouze Kristián může posunout čas trhu. Aktuální čtvrtletí: Q{gameState?.currentQuarter}</p>
+                  <p className="text-[10px] text-yellow-500 mt-2 opacity-70">Pouze Kristián může ovládat čas trhu. Aktuální měsíc: {MONTH_NAMES[gameState?.currentMonth ?? 0]}</p>
                 </div>
               )}
             </div>

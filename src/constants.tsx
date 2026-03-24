@@ -1,70 +1,70 @@
 import { StockPrices, GameState } from './types';
 
+export const MONTH_NAMES = [
+  'Leden', 'Únor', 'Březen', 'Duben', 'Květen', 'Červen', 
+  'Červenec', 'Srpen', 'Září', 'Říjen', 'Listopad', 'Prosinec'
+];
+
 export const MARKET_SCHEDULE: Record<number, { prices: StockPrices; state: any; newsPool: string[] }> = {
-  0: {
+  0: { // January
     prices: { AAPL: 100, NVDA: 100, WMT: 100 },
-    state: {
-      currentQuarter: 0,
-      sentiment: 'Neutral',
-      newsFlash: 'Vstup na burzu (IPO)! Všechny akcie začínají na 100 $. Pasivní fond nabízí 8% výnos.'
-    },
-    newsPool: [
-      'Vstup na burzu (IPO)! Všechny akcie začínají na 100 $. Pasivní fond nabízí 8% výnos.',
-      'Wall Street vítá nové technologické giganty. Očekává se nízká volatilita.',
-      'Investoři se scházejí na největší burzovní premiéru roku.'
-    ]
+    state: { sentiment: 'Neutral', newsFlash: 'Leden: Start nového roku! Trh je stabilní a plný očekávání.' },
+    newsPool: ['Leden: Start nového roku! Trh je stabilní a plný očekávání.', 'Investoři plánují své strategie na nadcházejících 12 měsíců.']
   },
-  1: {
-    prices: { AAPL: 130, NVDA: 150, WMT: 100 },
-    state: {
-      currentQuarter: 1,
-      sentiment: 'Bull',
-      newsFlash: 'Euforie! Technologické akcie rostou. Býčí trh začíná!'
-    },
-    newsPool: [
-      'Euforie! Technologické akcie rostou. Býčí trh začíná!',
-      'NVDA láme historická maxima, poptávka po AI exploduje.',
-      'AAPL oznamuje revoluční nový produkt. Investoři jsou nadšeni.'
-    ]
+  1: { // February
+    prices: { AAPL: 105, NVDA: 110, WMT: 102 },
+    state: { sentiment: 'Bull', newsFlash: 'Únor: Technologické firmy hlásí silné zisky za minulý rok.' },
+    newsPool: ['Únor: Technologické firmy hlásí silné zisky za minulý rok.', 'Poptávka po AI čipech NVDA roste rychleji, než se čekalo.']
   },
-  2: {
-    prices: { AAPL: 80, NVDA: 40, WMT: 105 },
-    state: {
-      currentQuarter: 2,
-      sentiment: 'Bear',
-      newsFlash: 'Velká krize! NVDA se hroutí. Panika na trzích! Pamatujte na pravidlo přežití.'
-    },
-    newsPool: [
-      'Velká krize! NVDA se hroutí. Panika na trzích! Pamatujte na pravidlo přežití.',
-      'Kolaps globálního dodavatelského řetězce! Technologický sektor ve volném pádu.',
-      'Medvědí trh potvrzen. Volatilita stoupá na rekordní úrovně.'
-    ]
+  2: { // March
+    prices: { AAPL: 115, NVDA: 130, WMT: 105 },
+    state: { sentiment: 'Bull', newsFlash: 'Březen: Jarní optimismus na Wall Street. Indexy rostou.' },
+    newsPool: ['Březen: Jarní optimismus na Wall Street. Indexy rostou.', 'AAPL oznamuje novou generaci čipů.']
   },
-  3: {
-    prices: { AAPL: 70, NVDA: 30, WMT: 90 },
-    state: {
-      currentQuarter: 3,
-      sentiment: 'Bear',
-      newsFlash: 'Dividendy! WMT vyplácí 10 $/akcii věrným držitelům. Ceny se stabilizují.'
-    },
-    newsPool: [
-      'Dividendy! WMT vyplácí 10 $/akcii věrným držitelům. Ceny se stabilizují.',
-      'Trh našel dno. Investoři hledají výnos u WMT.',
-      'Stabilita se vrací, firemní zisky překonávají nízká očekávání.'
-    ]
+  3: { // April
+    prices: { AAPL: 110, NVDA: 120, WMT: 108 },
+    state: { sentiment: 'Neutral', newsFlash: 'Duben: Trh si dává pauzu. Probíhá mírná korekce.' },
+    newsPool: ['Duben: Trh si dává pauzu. Probíhá mírná korekce.', 'Inflační data jsou v souladu s očekáváním.']
   },
-  4: {
-    prices: { AAPL: 140, NVDA: 110, WMT: 115 },
-    state: {
-      currentQuarter: 4,
-      sentiment: 'Bull',
-      newsFlash: 'Zotavení! Trh se odráží ode dna. Konečné výpočty jsou hotovy.'
-    },
-    newsPool: [
-      'Zotavení! Trh se odráží ode dna. Konečné výpočty jsou hotovy.',
-      'Silný závěr roku! Akcie rostou navzdory dřívější volatilitě.',
-      'Ekonomika se ukazuje jako odolná. Začíná nová éra pro Wall Street.'
-    ]
+  4: { // May
+    prices: { AAPL: 100, NVDA: 90, WMT: 110 },
+    state: { sentiment: 'Bear', newsFlash: 'Květen: "Sell in May and go away?" Obavy z recese rostou.' },
+    newsPool: ['Květen: "Sell in May and go away?" Obavy z recese rostou.', 'Geopolitické napětí zneklidňuje investory.']
+  },
+  5: { // June
+    prices: { AAPL: 85, NVDA: 60, WMT: 115 },
+    state: { sentiment: 'Bear', newsFlash: 'Červen: Velký výprodej v tech sektoru. NVDA pod tlakem.' },
+    newsPool: ['Červen: Velký výprodej v tech sektoru. NVDA pod tlakem.', 'Regulátoři se zaměřují na AI monopol.']
+  },
+  6: { // July
+    prices: { AAPL: 75, NVDA: 45, WMT: 120 },
+    state: { sentiment: 'Bear', newsFlash: 'Červenec: Letní bouře na trzích. WMT se drží jako bezpečný přístav.' },
+    newsPool: ['Červenec: Letní bouře na trzích. WMT se drží jako bezpečný přístav.', 'Spotřebitelé šetří, diskontní prodejci jako WMT profitují.']
+  },
+  7: { // August
+    prices: { AAPL: 80, NVDA: 55, WMT: 118 },
+    state: { sentiment: 'Neutral', newsFlash: 'Srpen: Trh hledá dno. Objevují se první nákupní příležitosti.' },
+    newsPool: ['Srpen: Trh hledá dno. Objevují se první nákupní příležitosti.', 'Objemy obchodů jsou během dovolených nízké.']
+  },
+  8: { // September
+    prices: { AAPL: 95, NVDA: 75, WMT: 110 },
+    state: { sentiment: 'Bull', newsFlash: 'Září: Návrat k růstu. Technologický sektor se zotavuje.' },
+    newsPool: ['Září: Návrat k růstu. Technologický sektor se zotavuje.', 'Nové zakázky pro NVDA z datových center.']
+  },
+  9: { // October
+    prices: { AAPL: 110, NVDA: 95, WMT: 105 },
+    state: { sentiment: 'Bull', newsFlash: 'Říjen: Výsledková sezóna překonává očekávání.' },
+    newsPool: ['Říjen: Výsledková sezóna překonává očekávání.', 'AAPL hlásí rekordní prodeje v Číně.']
+  },
+  10: { // November
+    prices: { AAPL: 130, NVDA: 120, WMT: 100 },
+    state: { sentiment: 'Bull', newsFlash: 'Listopad: Předvánoční rallye začíná. Optimismus vrcholí.' },
+    newsPool: ['Listopad: Předvánoční rallye začíná. Optimismus vrcholí.', 'Očekávání silné nákupní sezóny pomáhá všem sektorům.']
+  },
+  11: { // December
+    prices: { AAPL: 150, NVDA: 140, WMT: 110 },
+    state: { sentiment: 'Bull', newsFlash: 'Prosinec: Santa Claus rallye! Rok končí na maximech.' },
+    newsPool: ['Prosinec: Santa Claus rallye! Rok končí na maximech.', 'Závěrečné zúčtování roku. Gratulujeme vítězům!']
   }
 };
 
@@ -74,49 +74,68 @@ export const PASSIVE_FUND_RETURN = 0.08;
 export const TRADING_FEE = 15;
 
 export const CandlestickShape = (props: any) => {
-  const { x, y, width, height, low, high, open, close, isUp } = props;
+  const { x, y, width, height, payload, yAxis } = props;
+  if (!payload) return null;
+
+  const open = Number(payload.open);
+  const close = Number(payload.close);
+  const high = Number(payload.high);
+  const low = Number(payload.low);
+
+  if (isNaN(open) || isNaN(close) || isNaN(high) || isNaN(low)) {
+    return null;
+  }
+
+  const isUp = close >= open;
   const color = isUp ? "#22c55e" : "#ef4444";
   
-  // Ensure a minimum thickness for the body
-  const minHeight = 4;
-  const displayHeight = Math.max(height, minHeight);
-  const displayY = y - (displayHeight - height) / 2;
-
-  const bodyTop = y;
-  const bodyBottom = y + height;
+  // If yAxis scale is available, use it for wicks
+  let highPx, lowPx, openPx, closePx;
   
-  // Fallback pixelsPerUnit if height is 0 (flat candle)
-  // We try to estimate it from the props if possible, otherwise use a small default
-  const priceRange = Math.abs(open - close);
-  // If priceRange is 0, we can't calculate pixelsPerUnit. 
-  // We'll use a default or calculate it from the high/low if they differ.
-  let pixelsPerUnit = 0;
-  if (priceRange > 0) {
-    pixelsPerUnit = height / priceRange;
-  } else if (Math.abs(high - low) > 0) {
-    // If it's a flat candle but has wicks, estimate scale from wicks
-    // This is a rough estimate but better than 0
-    pixelsPerUnit = 10; 
+  if (yAxis && yAxis.scale) {
+    highPx = yAxis.scale(high);
+    lowPx = yAxis.scale(low);
+    openPx = yAxis.scale(open);
+    closePx = yAxis.scale(close);
+  } else {
+    // Fallback if scale is missing (should not happen in Recharts Bar shape)
+    // We use the y and height provided by Recharts which correspond to bodyRange
+    const bodyMin = Math.min(open, close);
+    const bodyMax = Math.max(open, close);
+    const range = bodyMax - bodyMin;
+    
+    if (range === 0) {
+      highPx = y - 10; // Dummy wicks
+      lowPx = y + 10;
+      openPx = y;
+      closePx = y;
+    } else {
+      const scaleFactor = height / range;
+      highPx = y - (high - bodyMax) * scaleFactor;
+      lowPx = y + height + (bodyMin - low) * scaleFactor;
+      openPx = isUp ? y + height : y;
+      closePx = isUp ? y : y + height;
+    }
   }
-  
-  const highPx = bodyTop - (high - Math.max(open, close)) * pixelsPerUnit;
-  const lowPx = bodyBottom + (Math.min(open, close) - low) * pixelsPerUnit;
+
+  const rectTop = Math.min(openPx, closePx);
+  const rectHeight = Math.max(Math.abs(openPx - closePx), 2);
 
   return (
     <g>
       <line
         x1={x + width / 2}
-        y1={isNaN(highPx) ? displayY : highPx}
+        y1={highPx}
         x2={x + width / 2}
-        y2={isNaN(lowPx) ? displayY + displayHeight : lowPx}
+        y2={lowPx}
         stroke={color}
         strokeWidth={1}
       />
       <rect
         x={x}
-        y={displayY}
+        y={rectTop}
         width={width}
-        height={displayHeight}
+        height={rectHeight}
         fill={color}
       />
     </g>
