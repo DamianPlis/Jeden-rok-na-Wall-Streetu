@@ -74,9 +74,10 @@ interface StockChartProps {
   height?: string;
   isFocusMode?: boolean;
   trades?: Trade[];
+  timeLeft?: number;
 }
 
-function StockChart({ ticker, currentMonth, history, currentPrice, height = "h-80", isFocusMode = false, trades = [] }: StockChartProps) {
+function StockChart({ ticker, currentMonth, history, currentPrice, height = "h-80", isFocusMode = false, trades = [], timeLeft }: StockChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<any>(null);
   const seriesRef = useRef<any>(null);
@@ -151,46 +152,105 @@ function StockChart({ ticker, currentMonth, history, currentPrice, height = "h-8
         fontFamily: 'JetBrains Mono, monospace',
       },
       grid: {
-        vertLines: { color: '#1a1a1a' },
-        horzLines: { color: '#1a1a1a' },
+        vertLines: { color: 'rgba(42, 46, 57, 0.3)' },
+        horzLines: { color: 'rgba(42, 46, 57, 0.3)' },
       },
       crosshair: {
         mode: CrosshairMode.Normal,
+        vertLine: {
+          width: 1,
+          color: 'rgba(224, 227, 235, 0.1)',
+          style: 3, // Dashed
+          labelBackgroundColor: '#131722',
+        },
+        horzLine: {
+          width: 1,
+          color: 'rgba(224, 227, 235, 0.1)',
+          style: 3, // Dashed
+          labelBackgroundColor: '#131722',
+        },
       },
       rightPriceScale: {
-        borderColor: '#2a2b2e',
+        borderColor: 'rgba(197, 203, 206, 0.1)',
         visible: true,
+        scaleMargins: {
+          top: 0.2,
+          bottom: 0.2,
+        },
       },
       timeScale: {
-        borderColor: '#2a2b2e',
+        borderColor: 'rgba(197, 203, 206, 0.1)',
         timeVisible: true,
         secondsVisible: false,
+        barSpacing: 12,
       },
       handleScroll: true,
       handleScale: true,
     });
 
+    // Add Watermark
+    (chart as any).applyOptions({
+      watermark: {
+        visible: true,
+        fontSize: isFocusMode ? 48 : 24,
+        horzAlign: 'center',
+        vertAlign: 'center',
+        color: 'rgba(255, 255, 255, 0.03)',
+        text: ticker,
+      },
+    });
+
     let series;
+    let volumeSeries;
     try {
       series = (chart as any).addCandlestickSeries({
-        upColor: '#22c55e',
-        downColor: '#ef4444',
-        borderVisible: false,
-        wickUpColor: '#22c55e',
-        wickDownColor: '#ef4444',
+        upColor: '#089981',
+        downColor: '#f23645',
+        borderVisible: true,
+        borderColor: '#089981',
+        borderUpColor: '#089981',
+        borderDownColor: '#f23645',
+        wickUpColor: '#089981',
+        wickDownColor: '#f23645',
+        priceLineVisible: true,
+        priceLineWidth: 1,
+        priceLineColor: '#d1d4dc',
+        priceLineStyle: 3, // Dashed
+        lastValueVisible: true,
+      });
+      
+      volumeSeries = (chart as any).addHistogramSeries({
+        color: '#089981',
+        priceFormat: {
+          type: 'volume',
+        },
+        priceScaleId: '', // Overlay mode
+      });
+      
+      volumeSeries.priceScale().applyOptions({
+        scaleMargins: {
+          top: 0.8, // Volume at the bottom 20%
+          bottom: 0,
+        },
       });
     } catch (e) {
       series = chart.addSeries(CandlestickSeries, {
-        upColor: '#22c55e',
-        downColor: '#ef4444',
+        upColor: '#089981',
+        downColor: '#f23645',
         borderVisible: false,
-        wickUpColor: '#22c55e',
-        wickDownColor: '#ef4444',
+        wickUpColor: '#089981',
+        wickDownColor: '#f23645',
+        priceLineVisible: true,
+        priceLineWidth: 1,
+        priceLineColor: '#d1d4dc',
+        priceLineStyle: 3, // Dashed
+        lastValueVisible: true,
       });
     }
 
     chartRef.current = chart;
     seriesRef.current = series;
+    (chartRef.current as any).volumeSeries = volumeSeries;
 
     const handleResize = () => {
       if (chartContainerRef.current && chartRef.current) {
@@ -222,12 +282,21 @@ function StockChart({ ticker, currentMonth, history, currentPrice, height = "h-8
 
     seriesRef.current.setData(formattedData);
 
+    if ((chartRef.current as any).volumeSeries) {
+      const volumeData = data.map(d => ({
+        time: (Math.floor(d.time / 1000)) as any,
+        value: Math.abs(d.close - d.open) * 1000 + Math.random() * 500,
+        color: d.close >= d.open ? 'rgba(8, 153, 129, 0.5)' : 'rgba(242, 54, 69, 0.5)',
+      }));
+      (chartRef.current as any).volumeSeries.setData(volumeData);
+    }
+
     const markers = data
       .filter(d => d.trade)
       .map(d => ({
         time: (Math.floor(d.time / 1000)) as any,
         position: d.trade!.type === 'BUY' ? 'belowBar' : 'aboveBar',
-        color: d.trade!.type === 'BUY' ? '#22c55e' : '#ef4444',
+        color: d.trade!.type === 'BUY' ? '#089981' : '#f23645',
         shape: d.trade!.type === 'BUY' ? 'arrowUp' : 'arrowDown',
         text: d.trade!.type === 'BUY' ? 'BUY' : 'SELL',
       }));
@@ -243,22 +312,85 @@ function StockChart({ ticker, currentMonth, history, currentPrice, height = "h-8
 
   const lastIsUp = data[data.length - 1]?.close >= data[data.length - 1]?.open;
 
+  // Simulated Technical Analysis based on last 5 candles
+  const technicalAnalysis = useMemo(() => {
+    if (data.length < 5) return 'NEUTRÁLNÍ';
+    const last5 = data.slice(-5);
+    const upCount = last5.filter(d => d.close > d.open).length;
+    if (upCount >= 4) return 'SILNÝ NÁKUP';
+    if (upCount >= 3) return 'NÁKUP';
+    if (upCount <= 1) return 'SILNÝ PRODEJ';
+    if (upCount <= 2) return 'PRODEJ';
+    return 'NEUTRÁLNÍ';
+  }, [data]);
+
+  const analysisColor = useMemo(() => {
+    if (technicalAnalysis.includes('NÁKUP')) return 'text-[#089981]';
+    if (technicalAnalysis.includes('PRODEJ')) return 'text-[#f23645]';
+    return 'text-gray-400';
+  }, [technicalAnalysis]);
+
   return (
     <div className={cn(height, "w-full bg-[#050505] rounded-none border border-[#1a1a1a] shadow-2xl relative overflow-hidden font-mono")}>
-      <div className="absolute top-4 left-4 z-10 flex items-center gap-4 pointer-events-none">
-        <div className="flex items-center gap-2 bg-[#050505]/80 backdrop-blur-sm p-1 px-2 border border-white/5">
-          <div className={cn("w-2 h-2 rounded-full animate-pulse", lastIsUp ? "bg-[#22c55e]" : "bg-[#ef4444]")} />
-          <span className="text-[10px] text-gray-400 uppercase tracking-[0.2em] font-bold">TradingView Live</span>
+      <div className="absolute top-4 left-4 z-10 flex flex-col gap-2 pointer-events-none">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 bg-[#131722] p-1 px-2 border border-white/10 rounded-sm">
+            <div className={cn("w-2 h-2 rounded-full animate-pulse", lastIsUp ? "bg-[#089981]" : "bg-[#f23645]")} />
+            <span className="text-[10px] text-gray-300 uppercase tracking-[0.1em] font-bold">LIVE</span>
+          </div>
+          <div className="text-[10px] text-white font-bold bg-[#131722] p-1 px-2 border border-white/10 rounded-sm uppercase tracking-wider">
+            {ticker} <span className="text-gray-500">USD</span>
+          </div>
+          {isFocusMode && timeLeft !== undefined && (
+            <div className="text-[10px] text-white font-bold bg-[#131722] p-1 px-2 border border-white/10 rounded-sm flex items-center gap-2">
+              <span className="text-gray-500">DALŠÍ:</span>
+              <span className={cn("tabular-nums", timeLeft <= 10 ? "text-red-500" : "text-[#089981]")}>
+                {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+              </span>
+            </div>
+          )}
+          <div className={cn("text-[10px] font-bold bg-[#131722] p-1 px-2 border border-white/10 rounded-sm uppercase tracking-wider", analysisColor)}>
+            {technicalAnalysis}
+          </div>
         </div>
-        <div className="text-[10px] text-gray-400 bg-[#050505]/80 backdrop-blur-sm p-1 px-2 border border-white/5 uppercase tracking-widest">
-          {ticker} / USD
-        </div>
+        
+        {data.length > 0 && (
+          <div className="flex items-center gap-3 bg-[#131722]/40 backdrop-blur-sm p-1 px-2 text-[10px] font-medium border border-white/5 rounded-sm">
+            <div className="flex items-center gap-1">
+              <span className="text-gray-500">O</span>
+              <span className={lastIsUp ? "text-[#089981]" : "text-[#f23645]"}>{data[data.length - 1].open.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-gray-500">H</span>
+              <span className={lastIsUp ? "text-[#089981]" : "text-[#f23645]"}>{data[data.length - 1].high.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-gray-500">L</span>
+              <span className={lastIsUp ? "text-[#089981]" : "text-[#f23645]"}>{data[data.length - 1].low.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-gray-500">C</span>
+              <span className={lastIsUp ? "text-[#089981]" : "text-[#f23645]"}>{data[data.length - 1].close.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center gap-1 ml-2">
+              <span className="text-gray-500">V</span>
+              <span className="text-gray-300">
+                {(Math.abs(data[data.length - 1].close - data[data.length - 1].open) * 1000).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
-      <div className="absolute top-4 right-4 z-10 text-right pointer-events-none">
-        <div className={cn("text-2xl font-black tracking-tighter bg-[#050505]/80 backdrop-blur-sm p-1 px-2 border border-white/5", lastIsUp ? "text-[#22c55e]" : "text-[#ef4444]")}>
+      <div className="absolute top-4 right-4 z-10 text-right pointer-events-none flex flex-col items-end gap-1">
+        <div className={cn("text-2xl font-black tracking-tighter bg-[#131722] p-1 px-3 border border-white/10 rounded-sm shadow-xl", lastIsUp ? "text-[#089981]" : "text-[#f23645]")}>
           ${currentPrice.toFixed(2)}
         </div>
+        {data.length > 1 && (
+          <div className={cn("text-[10px] font-bold bg-[#131722] px-2 py-0.5 border border-white/10 rounded-sm", lastIsUp ? "text-[#089981]" : "text-[#f23645]")}>
+            {currentPrice >= data[data.length - 2].close ? '+' : ''}{((currentPrice - data[data.length - 2].close) / data[data.length - 2].close * 100).toFixed(2)}%
+          </div>
+        )}
       </div>
       
       <div ref={chartContainerRef} className="w-full h-full" />
@@ -987,6 +1119,21 @@ export default function App() {
                 </div>
                 <div className="flex items-center gap-8">
                   <div className="text-right">
+                    <div className="text-[10px] uppercase opacity-50 text-gray-400">Aktuální měsíc</div>
+                    <div className="text-xl font-bold text-white uppercase tracking-tighter">
+                      {MONTH_NAMES[gameState?.currentMonth ?? 0]}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase opacity-50 text-gray-400">Další měsíc za</div>
+                    <div className={cn(
+                      "text-xl font-bold tabular-nums",
+                      timeLeft <= 10 ? "text-red-500 animate-pulse" : "text-white"
+                    )}>
+                      {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+                    </div>
+                  </div>
+                  <div className="text-right">
                     <div className="text-[10px] uppercase opacity-50 text-gray-400">Dostupná hotovost</div>
                     <div className="text-xl font-bold text-white">${portfolio?.cash.toLocaleString()}</div>
                   </div>
@@ -1009,6 +1156,7 @@ export default function App() {
                     height="h-full"
                     isFocusMode={true}
                     trades={portfolio?.trades}
+                    timeLeft={timeLeft}
                   />
                 </div>
 
