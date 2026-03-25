@@ -32,15 +32,6 @@ import {
   CandleData,
   Trade
 } from './types';
-import { 
-  MARKET_SCHEDULE, 
-  MONTH_NAMES,
-  INITIAL_CAPITAL_MIN,
-  INITIAL_CAPITAL_MAX,
-  PASSIVE_FUND_RETURN,
-  TRADING_FEE,
-  CandlestickShape
-} from './constants';
 import { cn } from './lib/utils';
 import { 
   TrendingUp, 
@@ -62,21 +53,18 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  ComposedChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer,
-  Cell,
-  ReferenceLine,
-  Scatter,
-  Line
-} from 'recharts';
+import { createChart, ColorType, CrosshairMode, CandlestickSeries } from 'lightweight-charts';
+import { useRef } from 'react';
 
-const PRICE_IMPACT = 2.5; // Increased from 0.5 for more noticeable effect
+import { 
+  PRICE_IMPACT, 
+  MARKET_SCHEDULE, 
+  MONTH_NAMES, 
+  INITIAL_CAPITAL_MIN, 
+  INITIAL_CAPITAL_MAX, 
+  PASSIVE_FUND_RETURN, 
+  TRADING_FEE 
+} from './constants';
 
 interface StockChartProps {
   ticker: keyof StockPrices;
@@ -89,41 +77,61 @@ interface StockChartProps {
 }
 
 function StockChart({ ticker, currentMonth, history, currentPrice, height = "h-80", isFocusMode = false, trades = [] }: StockChartProps) {
-  const data = useMemo(() => {
-    const tickerHistory = history[ticker] || [];
-    
-    const lastCandle = tickerHistory[tickerHistory.length - 1];
-    const liveCandle: CandleData = {
-      time: Date.now(),
-      open: lastCandle ? lastCandle.close : 100,
-      close: currentPrice,
-      high: Math.max(lastCandle ? lastCandle.close : 100, currentPrice, lastCandle ? lastCandle.high : currentPrice),
-      low: Math.min(lastCandle ? lastCandle.close : 100, currentPrice, lastCandle ? lastCandle.low : currentPrice)
-    };
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<any>(null);
+  const seriesRef = useRef<any>(null);
 
+  const data = useMemo(() => {
+    const tickerHistory = [...(history[ticker] || [])].sort((a, b) => a.time - b.time);
     const tickerTrades = trades.filter(t => t.ticker === ticker);
 
-    const baseData = [...tickerHistory, liveCandle];
-    // Ensure we have at least 2 points for the chart to render properly
-    if (baseData.length === 1) {
-      const dummy: CandleData = {
-        ...baseData[0],
-        time: baseData[0].time - 60000,
-      };
-      baseData.unshift(dummy);
+    const baseData = [...tickerHistory];
+    
+    const lastHistoryCandle = baseData[baseData.length - 1];
+    const liveOpen = lastHistoryCandle ? lastHistoryCandle.close : currentPrice;
+    
+    // Ensure liveTime is at least 1 second ahead of lastHistoryCandle
+    const liveTime = lastHistoryCandle 
+      ? Math.max(lastHistoryCandle.time + 1000, Date.now()) 
+      : Date.now();
+
+    baseData.push({
+      time: liveTime,
+      open: liveOpen,
+      high: Math.max(liveOpen, currentPrice),
+      low: Math.min(liveOpen, currentPrice),
+      close: currentPrice
+    });
+
+    // Deduplicate by second to prevent lightweight-charts errors
+    const deduplicated: CandleData[] = [];
+    const seenSeconds = new Set<number>();
+    
+    // Sort by time to ensure order
+    baseData.sort((a, b) => a.time - b.time);
+
+    // Keep the latest candle for each second
+    for (let i = baseData.length - 1; i >= 0; i--) {
+      const candle = baseData[i];
+      const second = Math.floor(candle.time / 1000);
+      if (!seenSeconds.has(second)) {
+        deduplicated.unshift(candle);
+        seenSeconds.add(second);
+      }
     }
 
-    const allData = baseData.map((c, idx) => {
-      const isUp = c.close >= c.open;
-      // Find if a trade happened near this candle's time
-      // Since candles are created on trades, we can match them
-      const trade = tickerTrades.find(t => Math.abs(t.time - c.time) < 1000);
-      
+    if (deduplicated.length === 1) {
+      const dummy: CandleData = {
+        ...deduplicated[0],
+        time: deduplicated[0].time - 60000,
+      };
+      deduplicated.unshift(dummy);
+    }
+
+    return deduplicated.map((c) => {
+      const trade = tickerTrades.find(t => Math.abs(t.time - c.time) < 2000);
       return {
         ...c,
-        name: `T${idx}`,
-        isUp,
-        bodyRange: [Math.min(c.open, c.close), Math.max(c.open, c.close)],
         trade: trade ? {
           type: trade.amount > 0 ? 'BUY' : 'SELL',
           amount: Math.abs(trade.amount),
@@ -131,150 +139,129 @@ function StockChart({ ticker, currentMonth, history, currentPrice, height = "h-8
         } : null
       };
     });
+  }, [ticker, history, trades, currentPrice]);
 
-    return allData;
-  }, [ticker, history, currentPrice, trades]);
+  useEffect(() => {
+    if (!chartContainerRef.current) return;
 
-  const lastIsUp = data[data.length - 1]?.isUp;
+    const chart = createChart(chartContainerRef.current, {
+      layout: {
+        background: { type: ColorType.Solid, color: '#050505' },
+        textColor: '#d1d4dc',
+        fontFamily: 'JetBrains Mono, monospace',
+      },
+      grid: {
+        vertLines: { color: '#1a1a1a' },
+        horzLines: { color: '#1a1a1a' },
+      },
+      crosshair: {
+        mode: CrosshairMode.Normal,
+      },
+      rightPriceScale: {
+        borderColor: '#2a2b2e',
+        visible: true,
+      },
+      timeScale: {
+        borderColor: '#2a2b2e',
+        timeVisible: true,
+        secondsVisible: false,
+      },
+      handleScroll: true,
+      handleScale: true,
+    });
+
+    let series;
+    try {
+      series = (chart as any).addCandlestickSeries({
+        upColor: '#22c55e',
+        downColor: '#ef4444',
+        borderVisible: false,
+        wickUpColor: '#22c55e',
+        wickDownColor: '#ef4444',
+      });
+    } catch (e) {
+      series = chart.addSeries(CandlestickSeries, {
+        upColor: '#22c55e',
+        downColor: '#ef4444',
+        borderVisible: false,
+        wickUpColor: '#22c55e',
+        wickDownColor: '#ef4444',
+      });
+    }
+
+    chartRef.current = chart;
+    seriesRef.current = series;
+
+    const handleResize = () => {
+      if (chartContainerRef.current && chartRef.current) {
+        chartRef.current.applyOptions({
+          width: chartContainerRef.current.clientWidth,
+          height: chartContainerRef.current.clientHeight,
+        });
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      chart.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!seriesRef.current || !data.length) return;
+
+    const formattedData = data.map(d => ({
+      time: (Math.floor(d.time / 1000)) as any,
+      open: d.open,
+      high: d.high,
+      low: d.low,
+      close: d.close,
+    }));
+
+    seriesRef.current.setData(formattedData);
+
+    const markers = data
+      .filter(d => d.trade)
+      .map(d => ({
+        time: (Math.floor(d.time / 1000)) as any,
+        position: d.trade!.type === 'BUY' ? 'belowBar' : 'aboveBar',
+        color: d.trade!.type === 'BUY' ? '#22c55e' : '#ef4444',
+        shape: d.trade!.type === 'BUY' ? 'arrowUp' : 'arrowDown',
+        text: d.trade!.type === 'BUY' ? 'BUY' : 'SELL',
+      }));
+
+    if (seriesRef.current && typeof seriesRef.current.setMarkers === 'function') {
+      seriesRef.current.setMarkers(markers);
+    }
+    
+    if (chartRef.current) {
+      chartRef.current.timeScale().fitContent();
+    }
+  }, [data]);
+
+  const lastIsUp = data[data.length - 1]?.close >= data[data.length - 1]?.open;
 
   return (
-    <div className={cn(height, "w-full bg-[#050505] rounded-none p-4 border border-[#1a1a1a] shadow-2xl relative overflow-hidden font-mono")}>
-      <div className="absolute inset-0 pointer-events-none opacity-5" 
-           style={{ 
-             backgroundImage: 'linear-gradient(#333 1px, transparent 1px), linear-gradient(90deg, #333 1px, transparent 1px)', 
-             backgroundSize: '40px 40px' 
-           }} />
-      
-      <div className="absolute top-4 left-4 z-10 flex items-center gap-4">
-        <div className="flex items-center gap-2">
+    <div className={cn(height, "w-full bg-[#050505] rounded-none border border-[#1a1a1a] shadow-2xl relative overflow-hidden font-mono")}>
+      <div className="absolute top-4 left-4 z-10 flex items-center gap-4 pointer-events-none">
+        <div className="flex items-center gap-2 bg-[#050505]/80 backdrop-blur-sm p-1 px-2 border border-white/5">
           <div className={cn("w-2 h-2 rounded-full animate-pulse", lastIsUp ? "bg-[#22c55e]" : "bg-[#ef4444]")} />
-          <span className="text-[10px] text-gray-500 uppercase tracking-[0.2em] font-bold">Živý terminál</span>
+          <span className="text-[10px] text-gray-400 uppercase tracking-[0.2em] font-bold">TradingView Live</span>
         </div>
-        <div className="text-[10px] text-gray-400 border-l border-white/10 pl-4 uppercase tracking-widest">
+        <div className="text-[10px] text-gray-400 bg-[#050505]/80 backdrop-blur-sm p-1 px-2 border border-white/5 uppercase tracking-widest">
           {ticker} / USD
         </div>
       </div>
 
-      <div className="absolute top-4 right-4 z-10 text-right">
-        <div className={cn("text-2xl font-black tracking-tighter", lastIsUp ? "text-[#22c55e]" : "text-[#ef4444]")}>
+      <div className="absolute top-4 right-4 z-10 text-right pointer-events-none">
+        <div className={cn("text-2xl font-black tracking-tighter bg-[#050505]/80 backdrop-blur-sm p-1 px-2 border border-white/5", lastIsUp ? "text-[#22c55e]" : "text-[#ef4444]")}>
           ${currentPrice.toFixed(2)}
         </div>
       </div>
       
-      <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart 
-          data={data} 
-          margin={{ top: 40, right: 0, left: 0, bottom: 0 }}
-          barCategoryGap={0}
-        >
-          <CartesianGrid strokeDasharray="0" stroke="#111" vertical={true} horizontal={true} />
-          <XAxis dataKey="name" hide={true} />
-          <YAxis 
-            yAxisId="price"
-            stroke="#333" 
-            fontSize={9}
-            tickLine={false}
-            axisLine={false}
-            domain={[(dataMin: number) => dataMin * 0.9, (dataMax: number) => dataMax * 1.1]}
-            orientation="right"
-            tickFormatter={(val) => `$${val}`}
-          />
-          <Tooltip 
-            cursor={{ stroke: '#333', strokeWidth: 1 }}
-            content={({ active, payload }) => {
-              if (active && payload && payload.length) {
-                const d = payload[0].payload;
-                return (
-                  <div className="bg-[#0a0a0a] border border-[#2a2b2e] p-3 shadow-2xl backdrop-blur-md bg-opacity-95 z-50">
-                    <p className="text-[9px] text-gray-500 mb-2 font-bold uppercase tracking-widest">Data OHLC</p>
-                    <div className="grid grid-cols-2 gap-x-6 gap-y-1 mb-2">
-                      <span className="text-gray-500 text-[9px]">O</span>
-                      <span className="text-white text-[9px] text-right">${d.open.toFixed(2)}</span>
-                      <span className="text-gray-500 text-[9px]">H</span>
-                      <span className="text-[#22c55e] text-[9px] text-right">${d.high.toFixed(2)}</span>
-                      <span className="text-gray-500 text-[9px]">L</span>
-                      <span className="text-[#ef4444] text-[9px] text-right">${d.low.toFixed(2)}</span>
-                      <span className="text-gray-500 text-[9px]">C</span>
-                      <span className="text-white text-[9px] text-right font-bold">${d.close.toFixed(2)}</span>
-                    </div>
-                    {d.trade && (
-                      <div className={cn(
-                        "mt-2 pt-2 border-t border-white/10 flex items-center justify-between gap-4",
-                        d.trade.type === 'BUY' ? "text-[#22c55e]" : "text-[#ef4444]"
-                      )}>
-                        <span className="text-[10px] font-black uppercase tracking-tighter">{d.trade.type}</span>
-                        <span className="text-[10px] font-bold">{d.trade.amount} ks @ ${d.trade.price.toFixed(2)}</span>
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-              return null;
-            }}
-          />
-          
-          <ReferenceLine 
-            yAxisId="price"
-            y={currentPrice} 
-            stroke={lastIsUp ? "#22c55e" : "#ef4444"} 
-            strokeDasharray="3 3" 
-            strokeOpacity={0.5}
-            label={{ 
-              position: 'right', 
-              value: `$${currentPrice.toFixed(2)}`, 
-              fill: lastIsUp ? "#22c55e" : "#ef4444", 
-              fontSize: 10,
-              fontWeight: 'bold'
-            }} 
-          />
-
-          <Bar 
-            yAxisId="price"
-            dataKey="bodyRange" 
-            shape={CandlestickShape}
-            isAnimationActive={false}
-            fill="#22c55e"
-          />
-
-          {/* Hidden lines to ensure YAxis domain covers high/low */}
-          <Line yAxisId="price" dataKey="high" stroke="none" dot={false} isAnimationActive={false} />
-          <Line yAxisId="price" dataKey="low" stroke="none" dot={false} isAnimationActive={false} />
-
-          {trades.length > 0 && (
-            <Scatter
-              yAxisId="price"
-              data={data.filter(d => d.trade)}
-              shape={(props: any) => {
-                const { cx, cy, payload } = props;
-                if (!payload.trade) return null;
-                const isBuy = payload.trade.type === 'BUY';
-                return (
-                  <g transform={`translate(${cx},${cy})`}>
-                    <circle 
-                      r={isFocusMode ? 6 : 4} 
-                      fill={isBuy ? "#22c55e" : "#ef4444"} 
-                      stroke="#fff" 
-                      strokeWidth={1} 
-                    />
-                    {isFocusMode && (
-                      <text 
-                        y={isBuy ? -12 : 18} 
-                        textAnchor="middle" 
-                        fill={isBuy ? "#22c55e" : "#ef4444"} 
-                        fontSize={10} 
-                        fontWeight="bold"
-                        className="pointer-events-none"
-                      >
-                        {isBuy ? 'B' : 'S'}
-                      </text>
-                    )}
-                  </g>
-                );
-              }}
-            />
-          )}
-        </ComposedChart>
-      </ResponsiveContainer>
+      <div ref={chartContainerRef} className="w-full h-full" />
     </div>
   );
 }
@@ -510,6 +497,7 @@ export default function App() {
   const handleNextMonth = async () => {
     if (!isAdmin || !gameState || !roomId) return;
 
+    // Prevent double-triggering for the same month
     if (gameState.currentMonth >= 11) {
       await updateDoc(doc(db, 'rooms', roomId), {
         'gameState.isPaused': true,
@@ -528,7 +516,6 @@ export default function App() {
     const updates: any = {
       'gameState.currentMonth': nextM,
       'gameState.sentiment': schedule.state.sentiment,
-      'gameState.prices': nextPrices,
       'gameState.newsFlash': randomNews,
       'gameState.nextTickAt': Date.now() + 60000
     };
@@ -539,14 +526,18 @@ export default function App() {
       const open = gameState.prices[ticker] || (lastCandle ? lastCandle.close : 100);
       const close = nextPrices[ticker];
       
+      // Use a slightly more dramatic high/low for month transitions
+      const volatility = Math.abs(close - open) * 0.2 + 2;
+      
       const newCandle: CandleData = {
-        time: Date.now(),
+        time: Date.now() + Math.random() * 1000, // Ensure uniqueness and slight offset
         open,
         close,
-        high: Math.max(open, close) + (Math.random() * 5),
-        low: Math.min(open, close) - (Math.random() * 5)
+        high: Math.max(open, close) + (Math.random() * volatility),
+        low: Math.min(open, close) - (Math.random() * volatility)
       };
       
+      updates[`gameState.prices.${ticker}`] = close;
       updates[`gameState.history.${ticker}`] = arrayUnion(newCandle);
     });
 

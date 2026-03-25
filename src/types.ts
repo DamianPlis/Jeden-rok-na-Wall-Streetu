@@ -13,7 +13,9 @@ export interface CandleData {
 }
 
 export interface GameState {
-  currentQuarter: number;
+  currentMonth: number; // 0 (Jan) to 11 (Dec)
+  isPaused: boolean;
+  nextTickAt: number | null; // Timestamp when the next month should start
   sentiment: 'Bull' | 'Bear' | 'Neutral';
   newsFlash: string;
   prices: StockPrices;
@@ -48,13 +50,7 @@ export interface UserPortfolio {
   };
   passiveFund: number;
   isPassiveLocked: boolean;
-  isQ3DividendPaid?: boolean;
-  isQ4FinalPaid?: boolean;
+  isDividendPaid?: { [month: number]: boolean };
+  isFinalPaid?: boolean;
   trades?: Trade[];
 }
-
-export const ADMINS = [
-  'kristian.paca@montetrida.cz',
-  'paca.kristian@gmail.com',
-  'kristianai2011@gmail.com'
-];
