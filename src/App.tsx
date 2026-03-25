@@ -71,15 +71,15 @@ function InfoTooltip({ content }: { content: string }) {
   const [isVisible, setIsVisible] = useState(false);
   
   return (
-    <div className="relative inline-block ml-1 align-middle">
-      <button
+    <div className="relative inline-block ml-1 align-middle" onClick={(e) => e.stopPropagation()}>
+      <span
         onMouseEnter={() => setIsVisible(true)}
         onMouseLeave={() => setIsVisible(false)}
         onClick={() => setIsVisible(!isVisible)}
-        className="text-gray-500 hover:text-white transition-colors focus:outline-none"
+        className="text-gray-500 hover:text-white transition-colors cursor-help inline-flex items-center"
       >
         <Info size={14} />
-      </button>
+      </span>
       <AnimatePresence>
         {isVisible && (
           <motion.div
@@ -233,7 +233,7 @@ function StockChart({ ticker, currentMonth, history, currentPrice, height = "h-8
       },
     });
 
-    let series;
+    let series: any;
     let volumeSeries;
     try {
       series = (chart as any).addCandlestickSeries({
@@ -300,6 +300,17 @@ function StockChart({ ticker, currentMonth, history, currentPrice, height = "h-8
   }, []);
 
   useEffect(() => {
+    if (chartRef.current) {
+      chartRef.current.applyOptions({
+        watermark: {
+          text: ticker,
+          fontSize: isFocusMode ? 48 : 24,
+        },
+      });
+    }
+  }, [ticker, isFocusMode]);
+
+  useEffect(() => {
     if (!seriesRef.current || !data.length) return;
 
     const formattedData = data.map(d => ({
@@ -335,10 +346,15 @@ function StockChart({ ticker, currentMonth, history, currentPrice, height = "h-8
       seriesRef.current.setMarkers(markers);
     }
     
-    if (chartRef.current) {
+    // Only fit content on first load or ticker change to allow zooming
+    if (chartRef.current && !chartRef.current._hasInitialFit) {
       chartRef.current.timeScale().fitContent();
+      chartRef.current._hasInitialFit = ticker;
+    } else if (chartRef.current && chartRef.current._hasInitialFit !== ticker) {
+      chartRef.current.timeScale().fitContent();
+      chartRef.current._hasInitialFit = ticker;
     }
-  }, [data]);
+  }, [data, ticker]);
 
   const lastIsUp = data[data.length - 1]?.close >= data[data.length - 1]?.open;
 
@@ -607,6 +623,52 @@ export default function App() {
     return () => clearInterval(interval);
   }, [gameState?.nextTickAt, gameState?.isPaused, isAdmin]);
 
+  // Market Heartbeat (Admin only) - Updates prices slightly and records history
+  useEffect(() => {
+    if (!isAdmin || !gameState || !roomId || gameState.isPaused) return;
+
+    const interval = setInterval(async () => {
+      const updates: any = {};
+      const now = Date.now();
+
+      (['AAPL', 'NVDA', 'WMT'] as const).forEach(ticker => {
+        const currentPrice = gameState.prices[ticker];
+        const sentiment = gameState.sentiment;
+        
+        // Random walk based on sentiment
+        const bias = sentiment === 'Bull' ? 0.15 : sentiment === 'Bear' ? -0.15 : 0;
+        const change = (Math.random() - 0.5 + bias) * 0.5;
+        const nextPrice = Math.max(1, currentPrice + change);
+        
+        const tickerHistory = gameState.history?.[ticker] || [];
+        const lastCandle = tickerHistory[tickerHistory.length - 1];
+        
+        // Only add a new candle if enough time has passed (e.g., 5 seconds)
+        // or if the price has moved significantly. 
+        // For simplicity in this game, we'll add a candle every heartbeat (3s)
+        const open = lastCandle ? lastCandle.close : currentPrice;
+        const newCandle: CandleData = {
+          time: now,
+          open,
+          close: nextPrice,
+          high: Math.max(open, nextPrice) + (Math.random() * 0.2),
+          low: Math.min(open, nextPrice) - (Math.random() * 0.2)
+        };
+
+        updates[`gameState.prices.${ticker}`] = nextPrice;
+        updates[`gameState.history.${ticker}`] = arrayUnion(newCandle);
+      });
+
+      try {
+        await updateDoc(doc(db, 'rooms', roomId), updates);
+      } catch (err) {
+        console.error("Market heartbeat failed:", err);
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [isAdmin, gameState?.isPaused, roomId, gameState?.sentiment]);
+
   const handleCreateRoom = async () => {
     if (!user || !newRoomName.trim()) return;
     
@@ -780,29 +842,11 @@ export default function App() {
       });
 
       const priceChange = PRICE_IMPACT * amount;
-      const nextPrice = currentPrice + priceChange;
-
-      // Record trade as a candle
-      const tickerHistory = gameState.history?.[ticker] || [];
-      const lastCandle = tickerHistory[tickerHistory.length - 1];
-      const open = lastCandle ? lastCandle.close : currentPrice;
-      const time = lastCandle ? Math.max(Date.now(), lastCandle.time + 1000) : Date.now();
-
-      const newCandle: CandleData = {
-        time,
-        open,
-        close: nextPrice,
-        high: Math.max(open, nextPrice) + (Math.random() * 2),
-        low: Math.min(open, nextPrice) - (Math.random() * 2)
-      };
-
-      if (!isNaN(nextPrice)) {
-        await updateDoc(doc(db, 'rooms', roomId), {
-          [`gameState.prices.${ticker}`]: increment(priceChange),
-          [`gameState.history.${ticker}`]: arrayUnion(newCandle)
-        });
-      }
-
+      
+      // Just increment the price, the heartbeat will handle the history
+      await updateDoc(doc(db, 'rooms', roomId), {
+        [`gameState.prices.${ticker}`]: increment(priceChange)
+      });
     } else { // Sell
       if (portfolio.shares[ticker] < Math.abs(amount)) {
         setError('Nemáte dostatek akcií!');
@@ -825,28 +869,11 @@ export default function App() {
       });
 
       const priceChange = PRICE_IMPACT * amount; // amount is negative
-      const nextPrice = currentPrice + priceChange;
 
-      // Record trade as a candle
-      const tickerHistory = gameState.history?.[ticker] || [];
-      const lastCandle = tickerHistory[tickerHistory.length - 1];
-      const open = lastCandle ? lastCandle.close : currentPrice;
-      const time = lastCandle ? Math.max(Date.now(), lastCandle.time + 1000) : Date.now();
-
-      const newCandle: CandleData = {
-        time,
-        open,
-        close: nextPrice,
-        high: Math.max(open, nextPrice) + (Math.random() * 2),
-        low: Math.min(open, nextPrice) - (Math.random() * 2)
-      };
-
-      if (!isNaN(nextPrice)) {
-        await updateDoc(doc(db, 'rooms', roomId), {
-          [`gameState.prices.${ticker}`]: increment(priceChange),
-          [`gameState.history.${ticker}`]: arrayUnion(newCandle)
-        });
-      }
+      // Just increment the price, the heartbeat will handle the history
+      await updateDoc(doc(db, 'rooms', roomId), {
+        [`gameState.prices.${ticker}`]: increment(priceChange)
+      });
     }
     setError(null);
   };
