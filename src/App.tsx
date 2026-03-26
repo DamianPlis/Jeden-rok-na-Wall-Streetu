@@ -124,16 +124,35 @@ function StockChart({ ticker, currentMonth, history, currentPrice, height = "h-8
     const lastHistoryCandle = baseData[baseData.length - 1];
     const liveOpen = lastHistoryCandle ? lastHistoryCandle.close : currentPrice;
     
-    // Ensure liveTime is at least 1 second ahead of lastHistoryCandle
-    const liveTime = lastHistoryCandle 
-      ? Math.max(lastHistoryCandle.time + 1000, Date.now()) 
-      : Date.now();
+    // Track session high/low for the live candle to prevent "shrinking"
+    const liveTrades = tickerTrades.filter(t => t.time > (lastHistoryCandle?.time || 0));
+    const tradePrices = liveTrades.map(t => t.price);
+    const allPrices = [liveOpen, currentPrice, ...tradePrices];
+
+    const liveHigh = Math.max(...allPrices);
+    const liveLow = Math.min(...allPrices);
+
+    // Clock synchronization: Use the last history candle's time as a reference
+    // to avoid misalignment due to local clock drift.
+    // If we don't have history, we fall back to Date.now()
+    const now = Date.now();
+    let liveTime = now;
+    
+    if (lastHistoryCandle) {
+      // If the local clock is behind the history, force the live candle forward
+      // If the local clock is ahead, we still want to be at least 1s ahead of history
+      liveTime = Math.max(lastHistoryCandle.time + 1000, now);
+      
+      // If the history is very recent (within 10s), we can assume the server time
+      // is roughly lastHistoryCandle.time + (time since it was received).
+      // For simplicity, we just ensure it's always strictly increasing.
+    }
 
     baseData.push({
       time: liveTime,
       open: liveOpen,
-      high: Math.max(liveOpen, currentPrice),
-      low: Math.min(liveOpen, currentPrice),
+      high: liveHigh,
+      low: liveLow,
       close: currentPrice
     });
 
@@ -163,7 +182,8 @@ function StockChart({ ticker, currentMonth, history, currentPrice, height = "h-8
     }
 
     return deduplicated.map((c) => {
-      const trade = tickerTrades.find(t => Math.abs(t.time - c.time) < 2000);
+      // Find trades that happened within this candle's timeframe (3s window)
+      const trade = tickerTrades.find(t => Math.abs(t.time - c.time) < 3000);
       return {
         ...c,
         trade: trade ? {
@@ -247,6 +267,11 @@ function StockChart({ ticker, currentMonth, history, currentPrice, height = "h-8
         priceLineColor: '#d1d4dc',
         priceLineStyle: 3, // Dashed
         lastValueVisible: true,
+        priceFormat: {
+          type: 'price',
+          precision: 2,
+          minMove: 0.01,
+        },
       });
       
       volumeSeries = (chart as any).addHistogramSeries({
@@ -291,10 +316,11 @@ function StockChart({ ticker, currentMonth, history, currentPrice, height = "h-8
       }
     };
 
-    window.addEventListener('resize', handleResize);
+    const resizeObserver = new ResizeObserver(handleResize);
+    resizeObserver.observe(chartContainerRef.current);
 
     return () => {
-      window.removeEventListener('resize', handleResize);
+      resizeObserver.disconnect();
       chart.remove();
     };
   }, []);
@@ -337,9 +363,10 @@ function StockChart({ ticker, currentMonth, history, currentPrice, height = "h-8
       .map(d => ({
         time: (Math.floor(d.time / 1000)) as any,
         position: d.trade!.type === 'BUY' ? 'belowBar' : 'aboveBar',
-        color: '#26a69a',
+        color: d.trade!.type === 'BUY' ? '#22c55e' : '#ef4444',
         shape: d.trade!.type === 'BUY' ? 'arrowUp' : 'arrowDown',
         text: d.trade!.type === 'BUY' ? 'BUY' : 'SELL',
+        size: 1,
       }));
 
     if (seriesRef.current && typeof seriesRef.current.setMarkers === 'function') {
@@ -353,6 +380,18 @@ function StockChart({ ticker, currentMonth, history, currentPrice, height = "h-8
     } else if (chartRef.current && chartRef.current._hasInitialFit !== ticker) {
       chartRef.current.timeScale().fitContent();
       chartRef.current._hasInitialFit = ticker;
+    }
+
+    // If we are at the right edge, keep scrolling to the right
+    if (chartRef.current) {
+      const timeScale = chartRef.current.timeScale();
+      const visibleRange = timeScale.getVisibleRange();
+      if (visibleRange) {
+        const lastDataTime = formattedData[formattedData.length - 1].time;
+        if (visibleRange.to >= lastDataTime - 5) { // Within 5 bars of the end
+          timeScale.scrollToPosition(0, true);
+        }
+      }
     }
   }, [data, ticker]);
 
