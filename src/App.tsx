@@ -71,7 +71,7 @@ function InfoTooltip({ content }: { content: string }) {
   const [isVisible, setIsVisible] = useState(false);
   
   return (
-    <div className="relative inline-block ml-1 align-middle" onClick={(e) => e.stopPropagation()}>
+    <span className="relative inline-block ml-1 align-middle" onClick={(e) => e.stopPropagation()}>
       <span
         onMouseEnter={() => setIsVisible(true)}
         onMouseLeave={() => setIsVisible(false)}
@@ -95,7 +95,7 @@ function InfoTooltip({ content }: { content: string }) {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </span>
   );
 }
 
