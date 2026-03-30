@@ -54,7 +54,7 @@ import {
   Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { createChart, ColorType, CrosshairMode, CandlestickSeries } from 'lightweight-charts';
+import { createChart, ColorType, CrosshairMode, CandlestickSeries, HistogramSeries } from 'lightweight-charts';
 import { useRef } from 'react';
 
 import { 
@@ -186,6 +186,10 @@ function StockChart({ ticker, currentMonth, history, currentPrice, height = "h-8
       const trade = tickerTrades.find(t => Math.abs(t.time - c.time) < 3000);
       return {
         ...c,
+        open: Number(c.open.toFixed(2)),
+        high: Number(c.high.toFixed(2)),
+        low: Number(c.low.toFixed(2)),
+        close: Number(c.close.toFixed(2)),
         trade: trade ? {
           type: trade.amount > 0 ? 'BUY' : 'SELL',
           amount: Math.abs(trade.amount),
@@ -254,54 +258,42 @@ function StockChart({ ticker, currentMonth, history, currentPrice, height = "h-8
     });
 
     let series: any;
-    let volumeSeries;
-    try {
-      series = (chart as any).addCandlestickSeries({
-        upColor: '#22c55e', // Bright green
-        downColor: '#ef4444', // Red
-        borderVisible: true,
-        wickUpColor: '#22c55e',
-        wickDownColor: '#ef4444',
-        priceLineVisible: true,
-        priceLineWidth: 1,
-        priceLineColor: '#d1d4dc',
-        priceLineStyle: 3, // Dashed
-        lastValueVisible: true,
-        priceFormat: {
-          type: 'price',
-          precision: 2,
-          minMove: 0.01,
-        },
-      });
-      
-      volumeSeries = (chart as any).addHistogramSeries({
-        color: '#26a69a',
-        priceFormat: {
-          type: 'volume',
-        },
-        priceScaleId: '', // Overlay mode
-      });
-      
-      volumeSeries.priceScale().applyOptions({
-        scaleMargins: {
-          top: 0.8, // Volume at the bottom 20%
-          bottom: 0,
-        },
-      });
-    } catch (e) {
-      series = chart.addSeries(CandlestickSeries, {
-        upColor: '#22c55e',
-        downColor: '#ef4444',
-        borderVisible: false,
-        wickUpColor: '#22c55e',
-        wickDownColor: '#ef4444',
-        priceLineVisible: true,
-        priceLineWidth: 1,
-        priceLineColor: '#d1d4dc',
-        priceLineStyle: 3, // Dashed
-        lastValueVisible: true,
-      });
-    }
+    let volumeSeries: any;
+    
+    series = chart.addSeries(CandlestickSeries, {
+      upColor: '#22c55e', // Bright green
+      downColor: '#ef4444', // Red
+      borderVisible: true,
+      wickUpColor: '#22c55e',
+      wickDownColor: '#ef4444',
+      priceLineVisible: true,
+      priceLineWidth: 1,
+      priceLineColor: '#d1d4dc',
+      priceLineStyle: 3, // Dashed
+      lastValueVisible: true,
+      priceFormat: {
+        type: 'price',
+        precision: 2,
+        minMove: 0.01,
+      },
+    });
+    
+    volumeSeries = chart.addSeries(HistogramSeries, {
+      color: '#26a69a',
+      priceFormat: {
+        type: 'volume',
+      },
+      priceScaleId: 'volume', // Use a separate scale ID for volume
+    });
+    
+    // Configure the volume scale to be at the bottom
+    chart.priceScale('volume').applyOptions({
+      scaleMargins: {
+        top: 0.8, // Volume at the bottom 20%
+        bottom: 0,
+      },
+      visible: false, // Hide the volume scale axis
+    });
 
     chartRef.current = chart;
     seriesRef.current = series;
@@ -341,10 +333,10 @@ function StockChart({ ticker, currentMonth, history, currentPrice, height = "h-8
 
     const formattedData = data.map(d => ({
       time: (Math.floor(d.time / 1000)) as any,
-      open: d.open,
-      high: d.high,
-      low: d.low,
-      close: d.close,
+      open: Number(d.open.toFixed(2)),
+      high: Number(d.high.toFixed(2)),
+      low: Number(d.low.toFixed(2)),
+      close: Number(d.close.toFixed(2)),
     }));
 
     seriesRef.current.setData(formattedData);
@@ -677,7 +669,7 @@ export default function App() {
         // Random walk based on sentiment
         const bias = sentiment === 'Bull' ? 0.15 : sentiment === 'Bear' ? -0.15 : 0;
         const change = (Math.random() - 0.5 + bias) * 0.5;
-        const nextPrice = Math.max(1, currentPrice + change);
+        const nextPrice = Math.max(1, Math.round((currentPrice + change) * 100) / 100);
         
         const tickerHistory = gameState.history?.[ticker] || [];
         const lastCandle = tickerHistory[tickerHistory.length - 1];
@@ -690,8 +682,8 @@ export default function App() {
           time: now,
           open,
           close: nextPrice,
-          high: Math.max(open, nextPrice) + (Math.random() * 0.2),
-          low: Math.min(open, nextPrice) - (Math.random() * 0.2)
+          high: Math.round((Math.max(open, nextPrice) + (Math.random() * 0.2)) * 100) / 100,
+          low: Math.round((Math.min(open, nextPrice) - (Math.random() * 0.2)) * 100) / 100
         };
 
         updates[`gameState.prices.${ticker}`] = nextPrice;
@@ -719,9 +711,9 @@ export default function App() {
       newsFlash: MARKET_SCHEDULE[0].state.newsFlash,
       prices: MARKET_SCHEDULE[0].prices,
       history: {
-        AAPL: [{ time: Date.now(), open: MARKET_SCHEDULE[0].prices.AAPL, high: MARKET_SCHEDULE[0].prices.AAPL, low: MARKET_SCHEDULE[0].prices.AAPL, close: MARKET_SCHEDULE[0].prices.AAPL }],
-        NVDA: [{ time: Date.now(), open: MARKET_SCHEDULE[0].prices.NVDA, high: MARKET_SCHEDULE[0].prices.NVDA, low: MARKET_SCHEDULE[0].prices.NVDA, close: MARKET_SCHEDULE[0].prices.NVDA }],
-        WMT: [{ time: Date.now(), open: MARKET_SCHEDULE[0].prices.WMT, high: MARKET_SCHEDULE[0].prices.WMT, low: MARKET_SCHEDULE[0].prices.WMT, close: MARKET_SCHEDULE[0].prices.WMT }]
+        AAPL: [{ time: Date.now(), open: Number(MARKET_SCHEDULE[0].prices.AAPL.toFixed(2)), high: Number(MARKET_SCHEDULE[0].prices.AAPL.toFixed(2)), low: Number(MARKET_SCHEDULE[0].prices.AAPL.toFixed(2)), close: Number(MARKET_SCHEDULE[0].prices.AAPL.toFixed(2)) }],
+        NVDA: [{ time: Date.now(), open: Number(MARKET_SCHEDULE[0].prices.NVDA.toFixed(2)), high: Number(MARKET_SCHEDULE[0].prices.NVDA.toFixed(2)), low: Number(MARKET_SCHEDULE[0].prices.NVDA.toFixed(2)), close: Number(MARKET_SCHEDULE[0].prices.NVDA.toFixed(2)) }],
+        WMT: [{ time: Date.now(), open: Number(MARKET_SCHEDULE[0].prices.WMT.toFixed(2)), high: Number(MARKET_SCHEDULE[0].prices.WMT.toFixed(2)), low: Number(MARKET_SCHEDULE[0].prices.WMT.toFixed(2)), close: Number(MARKET_SCHEDULE[0].prices.WMT.toFixed(2)) }]
       }
     };
 
@@ -798,10 +790,10 @@ export default function App() {
       
       const newCandle: CandleData = {
         time: Date.now() + Math.random() * 1000, // Ensure uniqueness and slight offset
-        open,
-        close,
-        high: Math.max(open, close) + (Math.random() * volatility),
-        low: Math.min(open, close) - (Math.random() * volatility)
+        open: Number(open.toFixed(2)),
+        close: Number(close.toFixed(2)),
+        high: Number((Math.max(open, close) + (Math.random() * volatility)).toFixed(2)),
+        low: Number((Math.min(open, close) - (Math.random() * volatility)).toFixed(2))
       };
       
       updates[`gameState.prices.${ticker}`] = close;
@@ -845,9 +837,9 @@ export default function App() {
       newsFlash: MARKET_SCHEDULE[0].state.newsFlash,
       prices: MARKET_SCHEDULE[0].prices,
       history: {
-        AAPL: [{ time: Date.now(), open: MARKET_SCHEDULE[0].prices.AAPL, high: MARKET_SCHEDULE[0].prices.AAPL, low: MARKET_SCHEDULE[0].prices.AAPL, close: MARKET_SCHEDULE[0].prices.AAPL }],
-        NVDA: [{ time: Date.now(), open: MARKET_SCHEDULE[0].prices.NVDA, high: MARKET_SCHEDULE[0].prices.NVDA, low: MARKET_SCHEDULE[0].prices.NVDA, close: MARKET_SCHEDULE[0].prices.NVDA }],
-        WMT: [{ time: Date.now(), open: MARKET_SCHEDULE[0].prices.WMT, high: MARKET_SCHEDULE[0].prices.WMT, low: MARKET_SCHEDULE[0].prices.WMT, close: MARKET_SCHEDULE[0].prices.WMT }]
+        AAPL: [{ time: Date.now(), open: Number(MARKET_SCHEDULE[0].prices.AAPL.toFixed(2)), high: Number(MARKET_SCHEDULE[0].prices.AAPL.toFixed(2)), low: Number(MARKET_SCHEDULE[0].prices.AAPL.toFixed(2)), close: Number(MARKET_SCHEDULE[0].prices.AAPL.toFixed(2)) }],
+        NVDA: [{ time: Date.now(), open: Number(MARKET_SCHEDULE[0].prices.NVDA.toFixed(2)), high: Number(MARKET_SCHEDULE[0].prices.NVDA.toFixed(2)), low: Number(MARKET_SCHEDULE[0].prices.NVDA.toFixed(2)), close: Number(MARKET_SCHEDULE[0].prices.NVDA.toFixed(2)) }],
+        WMT: [{ time: Date.now(), open: Number(MARKET_SCHEDULE[0].prices.WMT.toFixed(2)), high: Number(MARKET_SCHEDULE[0].prices.WMT.toFixed(2)), low: Number(MARKET_SCHEDULE[0].prices.WMT.toFixed(2)), close: Number(MARKET_SCHEDULE[0].prices.WMT.toFixed(2)) }]
       }
     };
 
@@ -881,10 +873,11 @@ export default function App() {
       });
 
       const priceChange = PRICE_IMPACT * amount;
+      const newPrice = Math.max(1, Math.round((currentPrice + priceChange) * 100) / 100);
       
-      // Just increment the price, the heartbeat will handle the history
+      // Update the price directly for immediate feedback
       await updateDoc(doc(db, 'rooms', roomId), {
-        [`gameState.prices.${ticker}`]: increment(priceChange)
+        [`gameState.prices.${ticker}`]: newPrice
       });
     } else { // Sell
       if (portfolio.shares[ticker] < Math.abs(amount)) {
@@ -908,10 +901,11 @@ export default function App() {
       });
 
       const priceChange = PRICE_IMPACT * amount; // amount is negative
+      const newPrice = Math.max(1, Math.round((currentPrice + priceChange) * 100) / 100);
 
-      // Just increment the price, the heartbeat will handle the history
+      // Update the price directly for immediate feedback
       await updateDoc(doc(db, 'rooms', roomId), {
-        [`gameState.prices.${ticker}`]: increment(priceChange)
+        [`gameState.prices.${ticker}`]: newPrice
       });
     }
     setError(null);
@@ -1437,12 +1431,12 @@ export default function App() {
                                 <InfoTooltip content="WMT vyplácí dividendu $2 každý měsíc za každou drženou akcii." />
                               )}
                             </div>
-                            <div className="text-2xl font-bold text-white">${price}</div>
+                            <div className="text-2xl font-bold text-white">${price.toFixed(2)}</div>
                             <div className={cn(
                               "text-xs font-bold flex items-center gap-1",
                               diff > 0 ? "text-green-500" : diff < 0 ? "text-red-500" : "text-gray-500"
                             )}>
-                              {diff > 0 ? '+' : ''}{diff} {diff !== 0 && (diff > 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />)}
+                              {diff > 0 ? '+' : ''}{diff.toFixed(2)} {diff !== 0 && (diff > 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />)}
                             </div>
                           </div>
                         </div>
