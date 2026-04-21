@@ -696,24 +696,48 @@ export default function App() {
         const currentPrice = currentGameState.prices[ticker];
         const sentiment = currentGameState.sentiment;
         
-        // Random walk based on sentiment
-        const bias = sentiment === 'Bull' ? 0.3 : sentiment === 'Bear' ? -0.3 : 0;
-        const change = (Math.random() - 0.5 + bias) * 1.5;
-        const nextPrice = Math.max(1, Math.round((currentPrice + change) * 100) / 100);
-        
         const tickerHistory = currentGameState.history?.[ticker] || [];
         const lastCandle = tickerHistory[tickerHistory.length - 1];
+        const previousCandle = tickerHistory[tickerHistory.length - 2];
+
+        // 1. Calculate momentum from recent history
+        let momentum = 0;
+        if (lastCandle && previousCandle) {
+           const priceDiff = lastCandle.close - previousCandle.close;
+           // If there was a big move recently (e.g. from a user trade), carry 15% of that momentum forward
+           // This prevents the chart from smoothing out and simulates FOMO buying or Panic selling
+           momentum = priceDiff * 0.15; 
+        }
+
+        // 2. Base Random walk based on sentiment
+        // We drastically increase the bias and volatility compared to before for a rougher chart
+        const bias = sentiment === 'Bull' ? 0.6 : sentiment === 'Bear' ? -0.6 : 0;
+        
+        // Dynamic volatility: higher priced stocks swing by larger dollar amounts (approx 1.5% max swing)
+        const volatility = currentPrice * 0.015; 
+        const randomSwing = (Math.random() - 0.5 + bias) * volatility;
+
+        // 3. Apply changes
+        // Cap momentum to prevent infinite loops, but allow very large swings to persist
+        const cappedMomentum = Math.max(-volatility * 4, Math.min(volatility * 4, momentum));
+        
+        const change = randomSwing + cappedMomentum;
+        const nextPrice = Math.max(1, Math.round((currentPrice + change) * 100) / 100);
         
         // Only add a new candle if enough time has passed (e.g., 5 seconds)
         // or if the price has moved significantly. 
-        // For simplicity in this game, we'll add a candle every heartbeat (3s)
+        // For simplicity in this game, we'll add a candle every heartbeat (10s)
         const open = lastCandle ? lastCandle.close : currentPrice;
+        
+        // Widen the High/Low to make candles visually more pronounced and less smooth
+        const candleWickWiden = Math.max(0.5, Math.abs(open - nextPrice) * 0.3);
+
         const newCandle: CandleData = {
           time: now,
           open,
           close: nextPrice,
-          high: Math.round((Math.max(open, nextPrice) + (Math.random() * 0.5)) * 100) / 100,
-          low: Math.round((Math.min(open, nextPrice) - (Math.random() * 0.5)) * 100) / 100
+          high: Math.round((Math.max(open, nextPrice) + (Math.random() * candleWickWiden)) * 100) / 100,
+          low: Math.round((Math.min(open, nextPrice) - (Math.random() * candleWickWiden)) * 100) / 100
         };
 
         updates[`gameState.prices.${ticker}`] = nextPrice;
