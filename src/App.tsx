@@ -698,7 +698,11 @@ export default function App() {
   // Timer Logic
   useEffect(() => {
     if (!gameState || gameState.isPaused || !gameState.nextTickAt) {
-      setTimeLeft(60);
+      if (gameState?.remainingTime) {
+        setTimeLeft(gameState.remainingTime);
+      } else {
+        setTimeLeft(60);
+      }
       return;
     }
 
@@ -908,16 +912,33 @@ export default function App() {
   const handleTogglePause = async () => {
     if (!isAdmin || !gameState || !roomId) return;
     
-    const newPaused = !gameState.isPaused;
-    await updateDoc(doc(db, 'rooms', roomId), {
-      'gameState.isPaused': newPaused,
-      'gameState.nextTickAt': newPaused ? null : Date.now() + (timeLeft * 1000)
-    });
+    if (!gameState.isPaused) {
+      // Pausing
+      await updateDoc(doc(db, 'rooms', roomId), {
+        'gameState.isPaused': true,
+        'gameState.nextTickAt': null,
+        'gameState.remainingTime': timeLeft
+      });
+    } else {
+      // Resuming
+      const rt = gameState.remainingTime || 60;
+      await updateDoc(doc(db, 'rooms', roomId), {
+        'gameState.isPaused': false,
+         // We might not need to keep remainingTime set, but it doesn't hurt
+        'gameState.nextTickAt': Date.now() + (rt * 1000)
+      });
+    }
   };
 
   const handleStartGame = async () => {
     if (!isAdmin || !gameState || !roomId) return;
     
+    // If it was paused during a month, resume it instead of resetting
+    if (gameState.remainingTime) {
+      await handleTogglePause();
+      return;
+    }
+
     await updateDoc(doc(db, 'rooms', roomId), {
       'gameState.isPaused': false,
       'gameState.nextTickAt': Date.now() + 60000
@@ -951,8 +972,12 @@ export default function App() {
   const handleTrade = async (ticker: keyof StockPrices, amount: number) => {
     if (!user || !portfolio || !gameState || !roomId) return;
     
-    if (!gameState.nextTickAt && gameState.currentMonth === 0) {
-      setError('Nemůžete obchodovat, dokud správce nespustí simulaci!');
+    if (gameState.isPaused) {
+      if (!gameState.nextTickAt && gameState.currentMonth === 0) {
+        setError('Nemůžete obchodovat, dokud správce nespustí simulaci!');
+      } else {
+        setError('Hra je nyní pozastavena. Počkejte na obnovení simulace.');
+      }
       return;
     }
     
@@ -1034,27 +1059,6 @@ export default function App() {
       });
     }
     setError(null);
-  };
-
-  const handleMaxBuy = async (ticker: keyof StockPrices) => {
-    if (!portfolio || !gameState || !roomId) return;
-    const currentPrice = gameState.prices[ticker] || 100;
-    const maxShares = Math.floor((portfolio.cash - TRADING_FEE) / currentPrice);
-    if (maxShares > 0) {
-      await handleTrade(ticker, maxShares);
-    } else {
-      setError(`Nedostatek hotovosti pro nákup (potřebujete na poplatek $${TRADING_FEE} a 1 akcii)`);
-    }
-  };
-
-  const handleMaxSell = async (ticker: keyof StockPrices) => {
-    if (!portfolio || !roomId) return;
-    const maxShares = portfolio.shares[ticker];
-    if (maxShares > 0) {
-      await handleTrade(ticker, -maxShares);
-    } else {
-      setError('Nemáte žádné akcie k prodeji!');
-    }
   };
 
   const handleLockPassive = async (amount: number) => {
@@ -1516,18 +1520,6 @@ export default function App() {
                         >
                           PRODAT 10 ks
                         </button>
-                        <button 
-                          onClick={() => handleMaxBuy(focusTicker)}
-                          className="bg-green-600/20 border border-green-600 text-green-500 py-2 sm:py-3 font-bold hover:bg-green-600/30 active:scale-95 transition-all uppercase text-[9px] sm:text-[10px]"
-                        >
-                          MAX NÁKUP
-                        </button>
-                        <button 
-                          onClick={() => handleMaxSell(focusTicker)}
-                          className="bg-red-600/20 border border-red-600 text-red-500 py-2 sm:py-3 font-bold hover:bg-red-600/30 active:scale-95 transition-all uppercase text-[9px] sm:text-[10px]"
-                        >
-                          MAX PRODEJ
-                        </button>
                       </div>
                       <div className="text-[9px] sm:text-[10px] text-gray-500 text-center flex items-center justify-center gap-1">
                         Poplatek: ${TRADING_FEE}
@@ -1591,19 +1583,19 @@ export default function App() {
                   </div>
                   
                   <div className="flex flex-col gap-4">
-                    {gameState?.nextTickAt ? (
-                      <button 
-                        onClick={handleTogglePause}
-                        className="w-full bg-yellow-600 text-black py-4 font-bold flex items-center justify-center gap-2 hover:bg-yellow-500 active:scale-95 transition-all text-sm uppercase tracking-widest"
-                      >
-                        {gameState.isPaused ? 'POKRAČOVAT V SIMULACI' : 'POZASTAVIT SIMULACI'}
-                      </button>
-                    ) : (
+                    {(!gameState?.nextTickAt && gameState?.currentMonth === 0 && !gameState?.remainingTime) ? (
                       <button 
                         onClick={handleStartGame}
                         className="w-full bg-green-600 text-white py-4 font-bold flex items-center justify-center gap-2 hover:bg-green-500 active:scale-95 transition-all text-sm uppercase tracking-widest"
                       >
                         SPUSTIT SIMULACI
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={handleTogglePause}
+                        className="w-full bg-yellow-600 text-black py-4 font-bold flex items-center justify-center gap-2 hover:bg-yellow-500 active:scale-95 transition-all text-sm uppercase tracking-widest"
+                      >
+                        {gameState?.isPaused ? 'POKRAČOVAT V SIMULACI' : 'POZASTAVIT SIMULACI'}
                       </button>
                     )}
                     
@@ -1853,18 +1845,6 @@ export default function App() {
                               className="w-full border border-gray-400 text-gray-300 py-2 text-[10px] font-bold hover:bg-white/10 active:scale-95 transition-all"
                             >
                               Prod 10
-                            </button>
-                            <button 
-                              onClick={() => handleMaxBuy(ticker)}
-                              className="w-full bg-green-500/20 border border-green-500/50 text-green-500 py-2 text-[10px] font-bold hover:bg-green-500/30 active:scale-95 transition-all"
-                            >
-                              MAX KUP
-                            </button>
-                            <button 
-                              onClick={() => handleMaxSell(ticker)}
-                              className="w-full bg-red-500/20 border border-red-500/50 text-red-500 py-2 text-[10px] font-bold hover:bg-red-500/30 active:scale-95 transition-all"
-                            >
-                              MAX PROD
                             </button>
                           </div>
                         </div>

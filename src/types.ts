@@ -16,6 +16,7 @@ export interface GameState {
   currentMonth: number; // 0 (Jan) to 11 (Dec)
   isPaused: boolean;
   nextTickAt: number | null; // Timestamp when the next month should start
+  remainingTime?: number; // Time remaining when paused
   sentiment: 'Bull' | 'Bear' | 'Neutral';
   newsFlash: string;
   prices: StockPrices;
