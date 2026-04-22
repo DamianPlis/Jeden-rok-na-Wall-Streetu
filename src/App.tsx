@@ -951,6 +951,11 @@ export default function App() {
   const handleTrade = async (ticker: keyof StockPrices, amount: number) => {
     if (!user || !portfolio || !gameState || !roomId) return;
     
+    if (!gameState.nextTickAt && gameState.currentMonth === 0) {
+      setError('Nemůžete obchodovat, dokud správce nespustí simulaci!');
+      return;
+    }
+    
     const currentPrice = gameState.prices[ticker] || 100;
     const tradeValue = currentPrice * Math.abs(amount);
 
@@ -1269,19 +1274,21 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-3 w-full md:w-auto">
-            <button 
-              onClick={() => setIsFocusMode(!isFocusMode)}
-              className={cn(
-                "flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-3 md:py-2 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-all border-2",
-                isFocusMode 
-                  ? "bg-white text-black border-white" 
-                  : "bg-transparent text-white border-[#2a2b2e] hover:border-white"
-              )}
-            >
-              {isFocusMode ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-              <span className="hidden sm:inline">{isFocusMode ? "Zavřít detail" : "Detailní graf"}</span>
-              <span className="sm:hidden">{isFocusMode ? "Zavřít" : "Graf"}</span>
-            </button>
+            {!isAdmin && (
+              <button 
+                onClick={() => setIsFocusMode(!isFocusMode)}
+                className={cn(
+                  "flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-3 md:py-2 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-all border-2",
+                  isFocusMode 
+                    ? "bg-white text-black border-white" 
+                    : "bg-transparent text-white border-[#2a2b2e] hover:border-white"
+                )}
+              >
+                {isFocusMode ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+                <span className="hidden sm:inline">{isFocusMode ? "Zavřít detail" : "Detailní graf"}</span>
+                <span className="sm:hidden">{isFocusMode ? "Zavřít" : "Graf"}</span>
+              </button>
+            )}
             <button onClick={handleLogout} className="flex items-center gap-2 hover:underline text-xs sm:text-sm opacity-70 hover:opacity-100 px-2 py-1">
               <LogOut size={16} /> <span className="hidden sm:inline">Odhlásit se</span>
             </button>
@@ -1569,6 +1576,135 @@ export default function App() {
                 </div>
               </div>
             </div>
+          ) : isAdmin ? (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                
+                {/* Admin Controls Area */}
+                <div className="bg-[#1a1a1a] border-2 border-yellow-600/50 p-6 flex flex-col gap-6 shadow-[8px_8px_0px_0px_rgba(255,255,255,0.05)]">
+                  <div>
+                    <div className="flex items-center gap-3 text-yellow-500 mb-2">
+                      <ShieldAlert size={28} />
+                      <h2 className="text-xl font-black uppercase italic serif">Řídící Panel</h2>
+                    </div>
+                    <p className="text-xs text-yellow-500/70">Máte plnou kontrolu nad časem a tržními událostmi.</p>
+                  </div>
+                  
+                  <div className="flex flex-col gap-4">
+                    {gameState?.nextTickAt ? (
+                      <button 
+                        onClick={handleTogglePause}
+                        className="w-full bg-yellow-600 text-black py-4 font-bold flex items-center justify-center gap-2 hover:bg-yellow-500 active:scale-95 transition-all text-sm uppercase tracking-widest"
+                      >
+                        {gameState.isPaused ? 'POKRAČOVAT V SIMULACI' : 'POZASTAVIT SIMULACI'}
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={handleStartGame}
+                        className="w-full bg-green-600 text-white py-4 font-bold flex items-center justify-center gap-2 hover:bg-green-500 active:scale-95 transition-all text-sm uppercase tracking-widest"
+                      >
+                        SPUSTIT SIMULACI
+                      </button>
+                    )}
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <button 
+                        onClick={handleTriggerEvent}
+                        className="border-2 border-yellow-600 text-yellow-500 py-3 font-bold flex flex-col items-center justify-center hover:bg-yellow-600/10 active:scale-95 transition-all text-xs gap-1"
+                      >
+                        <span>NÁHODNÁ</span>
+                        <span>UDÁLOST</span>
+                      </button>
+                      <button 
+                        onClick={handleResetGame}
+                        className={cn(
+                          "py-3 font-bold flex flex-col items-center justify-center active:scale-95 transition-all text-xs gap-1",
+                          gameState?.currentMonth === 11 
+                            ? "bg-white text-black hover:bg-gray-200" 
+                            : "border-2 border-red-500 text-red-500 hover:bg-red-500/10"
+                        )}
+                      >
+                        <RefreshCw size={14} />
+                        <span>{gameState?.currentMonth === 11 ? 'NOVÁ HRA' : 'RESTART HRY'}</span>
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-auto pt-4">
+                    <p className="text-[10px] text-yellow-500/70 text-center">Pouze administrátor může ovládat trh.</p>
+                  </div>
+                </div>
+
+                {/* Players List (Span 2) */}
+                <div className="xl:col-span-2 bg-[#1a1a1a] border-2 border-[#2a2b2e] p-6 shadow-[8px_8px_0px_0px_rgba(255,255,255,0.05)] flex flex-col">
+                  <h2 className="text-xl font-bold mb-6 text-white uppercase flex items-center justify-between">
+                    <span>Přehled hráčů ({Object.keys(allPortfolios).length})</span>
+                    <Users size={24} className="text-gray-500" />
+                  </h2>
+                  <div className="flex-1 overflow-y-auto space-y-4 max-h-[400px] pr-2 custom-scrollbar">
+                    {(Object.values(allPortfolios) as UserPortfolio[])
+                      .map(p => ({
+                        ...p,
+                        netWorth: p.cash + p.passiveFund + Object.entries(p.shares as Record<string, number>).reduce((acc, [t, q]) => acc + q * (currentPrices?.[t as keyof StockPrices] || 0), 0)
+                      }))
+                      .sort((a, b) => b.netWorth - a.netWorth)
+                      .map((p, i) => (
+                        <div key={p.uid} className="bg-[#0a0a0a] border border-[#2a2b2e] p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                          <div className="flex items-center gap-4 w-full sm:w-auto">
+                            <span className="text-xl font-black text-gray-500 w-6 text-center">{i + 1}.</span>
+                            <div>
+                               <div className="font-bold text-lg text-white">{p.nickname || 'Anonym'}</div>
+                               <div className="text-xs text-gray-400">Akcie: ${(p.shares.AAPL * (currentPrices?.AAPL || 0) + p.shares.NVDA * (currentPrices?.NVDA || 0) + p.shares.WMT * (currentPrices?.WMT || 0)).toLocaleString(undefined, {maximumFractionDigits: 0})} • Pasivní fond: ${p.passiveFund.toLocaleString()}</div>
+                            </div>
+                          </div>
+                          <div className="text-left sm:text-right w-full sm:w-auto mt-2 sm:mt-0 flex flex-row sm:flex-col justify-between sm:justify-center items-center sm:items-end">
+                            <div className="text-[10px] uppercase text-gray-500 mb-1 sm:mb-0">CELKOVÁ HODNOTA</div>
+                            <div className={cn(
+                              "font-black text-xl tabular-nums",
+                              p.netWorth >= p.startingCapital ? "text-green-500" : "text-red-500"
+                            )}>
+                               ${p.netWorth.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    {Object.keys(allPortfolios).length === 0 && (
+                      <div className="text-center py-12 text-gray-500 italic">Zatím žádní hráči...</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Market Snapshots */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {(['AAPL', 'NVDA', 'WMT'] as const).map(ticker => {
+                   const price = currentPrices?.[ticker] ?? 100;
+                   const prevPrice = gameState && gameState.currentMonth > 0 
+                     ? MARKET_SCHEDULE[gameState.currentMonth - 1].prices[ticker] 
+                     : 100;
+                   const diff = price - prevPrice;
+                   return (
+                     <div key={ticker} className="bg-[#1a1a1a] border-2 border-[#2a2b2e] p-4 flex items-center justify-between shadow-[4px_4px_0px_0px_rgba(255,255,255,0.05)]">
+                        <div className="flex items-center gap-3">
+                           <div className="w-10 h-10 bg-white text-black flex items-center justify-center font-bold text-lg">
+                             {ticker[0]}
+                           </div>
+                           <div className="font-bold text-white text-lg">{ticker}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-bold text-white text-xl">${price.toFixed(2)}</div>
+                          <div className={cn(
+                            "text-xs font-bold flex items-center justify-end gap-1",
+                            diff > 0 ? "text-green-500" : diff < 0 ? "text-red-500" : "text-gray-500"
+                          )}>
+                            {diff > 0 ? '+' : ''}{diff.toFixed(2)} {diff !== 0 && (diff > 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />)}
+                          </div>
+                        </div>
+                     </div>
+                   );
+                })}
+              </div>
+            </div>
           ) : (
             <div className="space-y-6">
               {/* 2x2 Grid for Charts & Overview */}
@@ -1630,37 +1766,11 @@ export default function App() {
                 {/* OVERVIEW WINDOW */}
                 <div className="bg-[#1a1a1a] border-2 border-[#2a2b2e] shadow-[8px_8px_0px_0px_rgba(255,255,255,0.05)] p-5 sm:p-6 flex flex-col">
                   <h2 className="text-lg font-bold mb-4 flex items-center justify-between text-white uppercase tracking-wider">
-                    <span>{isAdmin ? 'Přehled Hráčů' : 'Váš Přehled'}</span>
-                    {isAdmin ? <Users size={20} className="text-gray-500" /> : <Wallet size={20} className="text-gray-500" />}
+                    <span>Váš Přehled</span>
+                    <Wallet size={20} className="text-gray-500" />
                   </h2>
 
-                  {isAdmin ? (
-                    <div className="flex-1 overflow-y-auto space-y-3 max-h-[300px] pr-2 custom-scrollbar">
-                      {(Object.values(allPortfolios) as UserPortfolio[])
-                        .map(p => ({
-                          ...p,
-                          netWorth: p.cash + p.passiveFund + Object.entries(p.shares as Record<string, number>).reduce((acc, [t, q]) => acc + q * (currentPrices?.[t as keyof StockPrices] || 0), 0)
-                        }))
-                        .sort((a, b) => b.netWorth - a.netWorth)
-                        .map((p, i) => (
-                          <div key={p.uid} className="flex justify-between items-center border-b border-[#2a2b2e] pb-2 border-dashed">
-                            <div>
-                              <div className="font-bold text-sm text-white flex items-center gap-2">
-                                <span className="text-gray-500 w-4">{i + 1}.</span> {p.nickname || 'Anonym'}
-                              </div>
-                              <div className="text-[10px] text-gray-500 ml-6">Hotovost: ${p.cash.toLocaleString(undefined, {maximumFractionDigits: 0})}</div>
-                            </div>
-                            <div className="text-right">
-                              <div className="font-bold text-green-500">${p.netWorth.toLocaleString(undefined, {maximumFractionDigits: 0})}</div>
-                            </div>
-                          </div>
-                        ))}
-                      {Object.keys(allPortfolios).length === 0 && (
-                        <div className="text-sm text-gray-500 text-center mt-8 italic">Zatím žádní hráči...</div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="flex-1 flex flex-col justify-center space-y-6">
+                  <div className="flex-1 flex flex-col justify-center space-y-6">
                       <div>
                         <div className="text-[10px] uppercase text-gray-500 mb-1 flex items-center">
                           Celková hodnota (Net Worth)
@@ -1703,12 +1813,11 @@ export default function App() {
                         </div>
                       </div>
                     </div>
-                  )}
                 </div>
               </div>
 
               {/* Trading & Fund Controls */}
-              {!isAdmin && gameState && gameState.currentMonth < 11 && (
+              {gameState && gameState.currentMonth < 11 && (
                 <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                   {/* Stock Trading Floor */}
                   <div className="xl:col-span-2 bg-[#1a1a1a] border-2 border-[#2a2b2e] p-4 sm:p-6 shadow-[8px_8px_0px_0px_rgba(255,255,255,0.05)]">
@@ -1805,56 +1914,6 @@ export default function App() {
                       <p className="text-[10px] text-gray-600">Investice byla možná pouze v lednu.</p>
                     </div>
                   )}
-                </div>
-              )}
-
-              {/* Admin Controls Area */}
-              {isAdmin && (
-                <div className="bg-[#1a1a1a] border-2 border-yellow-600/50 p-4 sm:p-6 shadow-[8px_8px_0px_0px_rgba(255,255,255,0.05)]">
-                  <div className="flex items-center gap-2 text-yellow-500 mb-4">
-                    <ShieldAlert size={18} className="sm:w-5 sm:h-5" />
-                    <h3 className="text-[10px] sm:text-xs uppercase font-bold italic serif flex items-center">
-                      Správa hry (Správce)
-                      <InfoTooltip content="Pouze zakladatel místnosti může ovládat čas a spouštět náhodné události." />
-                    </h3>
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      {gameState?.nextTickAt ? (
-                        <button 
-                          onClick={handleTogglePause}
-                          className="flex-[2] bg-yellow-600 text-black py-3 sm:py-4 font-bold flex items-center justify-center gap-2 hover:bg-yellow-500 active:scale-95 transition-all text-xs sm:text-sm"
-                        >
-                          {gameState.isPaused ? 'POKRAČOVAT V SIMULACI' : 'POZASTAVIT SIMULACI'}
-                        </button>
-                      ) : (
-                        <button 
-                          onClick={handleStartGame}
-                          className="flex-[2] bg-green-600 text-white py-3 sm:py-4 font-bold flex items-center justify-center gap-2 hover:bg-green-500 active:scale-95 transition-all text-xs sm:text-sm"
-                        >
-                          SPUSTIT SIMULACI
-                        </button>
-                      )}
-                      <button 
-                        onClick={handleTriggerEvent}
-                        className="flex-1 border-2 border-yellow-600 text-yellow-500 py-3 sm:py-4 font-bold flex items-center justify-center gap-2 hover:bg-yellow-600/10 active:scale-95 transition-all text-xs sm:text-sm"
-                      >
-                        NÁHODNÁ UDÁLOST
-                      </button>
-                    </div>
-                    <button 
-                      onClick={handleResetGame}
-                      className={cn(
-                        "w-full py-2.5 sm:py-3 font-bold flex items-center justify-center gap-2 active:scale-95 transition-all text-[10px] sm:text-xs",
-                        gameState?.currentMonth === 11 
-                          ? "bg-white text-black hover:bg-gray-200" 
-                          : "border-2 border-red-500 text-red-500 hover:bg-red-500/10"
-                      )}
-                    >
-                      <RefreshCw size={16} className="sm:w-[18px] sm:h-[18px]" /> {gameState?.currentMonth === 11 ? 'ZAČÍT NOVOU HRU' : 'HRÁT ZNOVU OD ZAČÁTKU'}
-                    </button>
-                  </div>
-                  <p className="text-[9px] sm:text-[10px] text-yellow-500 mt-2 opacity-70">Pouze Kristián může ovládat čas trhu. Aktuální měsíc: {MONTH_NAMES[gameState?.currentMonth ?? 0]}</p>
                 </div>
               )}
             </div>
