@@ -7,13 +7,7 @@ service cloud.firestore {
     }
     
     function isAdmin() {
-      return isAuthenticated() && (
-        request.auth.token.email == "kristian.paca@montetrida.cz" ||
-        request.auth.token.email == "paca.kristian@gmail.com" ||
-        request.auth.token.email == "kristianai2011@gmail.com"
-        request.auth.token.email == "damian.plis.praha@gmail.com"
-        request.auth.token.email == "gemini.damian.plis.praha@gmail.com"
-      );
+      return true
     }
     
     function isOwner(userId) {
