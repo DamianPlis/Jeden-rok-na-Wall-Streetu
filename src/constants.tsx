@@ -14,7 +14,9 @@ export const MONTH_NAMES = [
 export const ADMINS = [
   'kristian.paca@montetrida.cz',
   'paca.kristian@gmail.com',
-  'kristianai2011@gmail.com'
+  'kristianai2011@gmail.com',
+  "gemini.damian.plis.praha@gmail.com",
+  "damian.plis.praha@gmail.com"
 ];
 
 export const MARKET_SCHEDULE: Record<number, { prices: StockPrices; state: any; newsPool: string[] }> = {
