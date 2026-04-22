@@ -502,6 +502,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [showGameOver, setShowGameOver] = useState(false);
   const [deletingRoomId, setDeletingRoomId] = useState<string | null>(null);
+  const [insufficientFundsMessage, setInsufficientFundsMessage] = useState<string | null>(null);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(false);
   const [focusTicker, setFocusTicker] = useState<keyof StockPrices>('AAPL');
@@ -995,7 +996,7 @@ export default function App() {
     if (amount > 0) { // Buy
       const totalCost = tradeValue + TRADING_FEE;
       if (portfolio.cash < totalCost) {
-        setError(`Nedostatek prostředků! Potřebujete $${totalCost.toLocaleString()} (včetně poplatku $${TRADING_FEE})`);
+        setInsufficientFundsMessage(`Potřebujete $${totalCost.toLocaleString()} (včetně poplatku $${TRADING_FEE}). Aktuálně máte pouze $${portfolio.cash.toLocaleString()}.`);
         return;
       }
       
@@ -2185,6 +2186,41 @@ export default function App() {
                     ZRUŠIT
                   </button>
                 </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Insufficient Funds Modal */}
+        <AnimatePresence>
+          {insufficientFundsMessage && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 border-[10px] border-[#0a0a0a]"
+            >
+              <motion.div 
+                initial={{ scale: 0.9, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.9, y: 20 }}
+                className="max-w-md w-full bg-[#1a1a1a] border-2 border-red-500 p-8 shadow-[12px_12px_0px_0px_rgba(239,68,68,0.2)] text-center"
+              >
+                <div className="flex justify-center mb-4">
+                  <div className="bg-red-500/20 p-4 rounded-full">
+                    <Wallet size={32} className="text-red-500" />
+                  </div>
+                </div>
+                <h2 className="text-2xl font-black uppercase italic serif text-white mb-2">Nedostatek prostředků</h2>
+                <p className="text-sm text-gray-400 mb-8 leading-relaxed">
+                  {insufficientFundsMessage}
+                </p>
+                <button 
+                  onClick={() => setInsufficientFundsMessage(null)}
+                  className="w-full bg-white text-black py-4 font-bold hover:bg-gray-200 transition-colors uppercase tracking-widest text-sm"
+                >
+                  ROZUMÍM
+                </button>
               </motion.div>
             </motion.div>
           )}
