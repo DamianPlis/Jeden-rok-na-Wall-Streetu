@@ -524,7 +524,11 @@ export default function App() {
     if (showGameOver && roomId && gameStateRef.current) {
       const q = query(collection(db, 'rooms', roomId, 'portfolios'));
       getDocs(q).then((snap) => {
-        const ports = snap.docs.map(doc => doc.data() as UserPortfolio);
+        let ports = snap.docs.map(doc => doc.data() as UserPortfolio);
+        const room = rooms.find(r => r.id === roomId);
+        if (room?.createdBy) {
+          ports = ports.filter(p => p.uid !== room.createdBy);
+        }
         const prices = gameStateRef.current!.prices;
         ports.sort((a, b) => {
           const aNet = a.cash + (a.shares.AAPL * prices.AAPL) + (a.shares.NVDA * prices.NVDA) + (a.shares.WMT * prices.WMT) + a.passiveFund;
@@ -534,7 +538,7 @@ export default function App() {
         setLeaderboard(ports);
       }).catch(e => console.error(e));
     }
-  }, [showGameOver, roomId]);
+  }, [showGameOver, roomId, rooms]);
 
   const isAdmin = useMemo(() => {
     if (!user || !roomId) return false;
@@ -628,7 +632,9 @@ export default function App() {
         setPortfolio(snap.data() as UserPortfolio);
       } else {
         // Initialize portfolio in this room
-        const randomCapital = Math.floor(Math.random() * (INITIAL_CAPITAL_MAX - INITIAL_CAPITAL_MIN + 1)) + INITIAL_CAPITAL_MIN;
+        const room = rooms.find(r => r.id === roomId);
+        const isRoomCreator = room?.createdBy === user.uid;
+        const randomCapital = isRoomCreator ? 0 : Math.floor(Math.random() * (INITIAL_CAPITAL_MAX - INITIAL_CAPITAL_MIN + 1)) + INITIAL_CAPITAL_MIN;
         const initialPortfolio: UserPortfolio = {
           uid: user.uid,
           roomId: roomId,
@@ -1029,6 +1035,15 @@ export default function App() {
         [`gameState.prices.${ticker}`]: newPrice,
         [`gameState.history.${ticker}`]: arrayUnion(tradeCandle)
       });
+      
+      // Pay the fee to the room creator
+      const room = rooms.find(r => r.id === roomId);
+      const roomCreatorId = room?.createdBy;
+      if (roomCreatorId && roomCreatorId !== user.uid) {
+        await updateDoc(doc(db, 'rooms', roomId, 'portfolios', roomCreatorId), {
+          cash: increment(TRADING_FEE)
+        }).catch(err => console.error("Failed to pay fee to creator:", err));
+      }
     } else { // Sell
       if (portfolio.shares[ticker] < Math.abs(amount)) {
         setError('Nemáte dostatek akcií!');
@@ -1066,6 +1081,15 @@ export default function App() {
         [`gameState.prices.${ticker}`]: newPrice,
         [`gameState.history.${ticker}`]: arrayUnion(tradeCandle)
       });
+      
+      // Pay the fee to the room creator
+      const room = rooms.find(r => r.id === roomId);
+      const roomCreatorId = room?.createdBy;
+      if (roomCreatorId && roomCreatorId !== user.uid) {
+        await updateDoc(doc(db, 'rooms', roomId, 'portfolios', roomCreatorId), {
+          cash: increment(TRADING_FEE)
+        }).catch(err => console.error("Failed to pay fee to creator:", err));
+      }
     }
     setError(null);
   };
@@ -1549,11 +1573,12 @@ export default function App() {
                   </div>
                   <div className="text-left sm:text-right">
                     <div className="text-[9px] sm:text-[10px] uppercase opacity-50 text-gray-400 flex items-center sm:justify-end">
-                      Hotovost
-                      <InfoTooltip content="Peníze, které můžete použít k nákupu akcií nebo vložení do pasivního fondu." />
+                      {isAdmin ? 'Vybrané poplatky' : 'Hotovost'}
+                      <InfoTooltip content={isAdmin ? "Peníze vybrané z poplatků." : "Peníze, které můžete použít k nákupu akcií nebo vložení do pasivního fondu."} />
                     </div>
                     <div className="text-sm sm:text-xl font-bold text-white">${portfolio?.cash.toLocaleString()}</div>
                   </div>
+                  {!isAdmin && (
                   <div className="text-right">
                     <div className="text-[9px] sm:text-[10px] uppercase opacity-50 text-gray-400 flex items-center justify-end">
                       Akcie {focusTicker}
@@ -1561,6 +1586,7 @@ export default function App() {
                     </div>
                     <div className="text-sm sm:text-xl font-bold text-white">{portfolio?.shares[focusTicker] || 0}</div>
                   </div>
+                  )}
                 </div>
               </div>
 
@@ -1737,6 +1763,7 @@ export default function App() {
                   </h2>
                   <div className="flex-1 overflow-y-auto space-y-4 max-h-[400px] pr-2 custom-scrollbar">
                     {(Object.values(allPortfolios) as UserPortfolio[])
+                      .filter(p => !rooms.find(r => r.id === roomId)?.createdBy || p.uid !== rooms.find(r => r.id === roomId)?.createdBy)
                       .map(p => ({
                         ...p,
                         netWorth: p.cash + p.passiveFund + Object.entries(p.shares as Record<string, number>).reduce((acc, [t, q]) => acc + q * (currentPrices?.[t as keyof StockPrices] || 0), 0)
@@ -1887,14 +1914,17 @@ export default function App() {
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="p-3 bg-[#0a0a0a] border border-[#2a2b2e]">
-                          <div className="text-[9px] uppercase text-gray-500 mb-1">Dostupná hotovost</div>
+                          <div className="text-[9px] uppercase text-gray-500 mb-1">{isAdmin ? "Vybrané poplatky" : "Dostupná hotovost"}</div>
                           <div className="text-xl font-bold text-white">${portfolio?.cash.toLocaleString(undefined, {maximumFractionDigits: 0})}</div>
                         </div>
+                        {!isAdmin && (
                         <div className="p-3 bg-[#0a0a0a] border border-[#2a2b2e]">
                            <div className="text-[9px] uppercase text-gray-500 mb-1">Pasivní fond (+8%)</div>
                            <div className="text-xl font-bold text-blue-400">${portfolio?.passiveFund.toLocaleString(undefined, {maximumFractionDigits: 0})}</div>
                         </div>
+                        )}
                       </div>
+                      {!isAdmin && (
                       <div className="pt-4 border-t-2 border-[#2a2b2e] border-dashed">
                         <div className="text-[10px] uppercase text-gray-500 mb-2">Rozvržení aktiv</div>
                         <div className="space-y-2">
@@ -1906,6 +1936,7 @@ export default function App() {
                           ))}
                         </div>
                       </div>
+                      )}
                     </div>
                 </div>
               </div>
@@ -2024,31 +2055,39 @@ export default function App() {
                 <div className="grid grid-cols-2 gap-8 mb-8">
                   <div className="space-y-2">
                     <div className="text-xs uppercase opacity-50 text-gray-400 flex items-center">
-                      Celkové jmění
-                      <InfoTooltip content="Konečná hodnota vašeho portfolia (hotovost + akcie) na konci roku." />
+                      {isAdmin ? 'Celkem vybráno poplatků' : 'Celkové jmění'}
+                      <InfoTooltip content={isAdmin ? "Vydělali jste na trading poplatcích." : "Konečná hodnota vašeho portfolia (hotovost + akcie) na konci roku."} />
                     </div>
                     <div className="text-4xl font-bold text-white">
                       ${(
                         (portfolio?.cash || 0) + 
-                        (Object.entries(portfolio?.shares || {}).reduce((acc: number, [t, q]) => acc + (q as number) * (gameState?.prices?.[t as keyof StockPrices] || 0), 0))
+                        (isAdmin ? 0 : (Object.entries(portfolio?.shares || {}).reduce((acc: number, [t, q]) => acc + (q as number) * (gameState?.prices?.[t as keyof StockPrices] || 0), 0)))
                       ).toLocaleString()}
                     </div>
                   </div>
                   <div className="space-y-2">
                     <div className="text-xs uppercase opacity-50 text-gray-400 flex items-center">
-                      Zisk/Ztráta
-                      <InfoTooltip content="Rozdíl mezi vaším počátečním kapitálem a konečným jměním." />
+                      {isAdmin ? 'Počet provedených obchodů' : 'Zisk/Ztráta'}
+                      <InfoTooltip content={isAdmin ? "Za každý obchod jste jako broker vybral fixní poplatek." : "Rozdíl mezi vaším počátečním kapitálem a konečným jměním."} />
                     </div>
                     <div className={cn(
                       "text-4xl font-bold",
-                      ((portfolio?.cash || 0) + (Object.entries(portfolio?.shares || {}).reduce((acc: number, [t, q]) => acc + (q as number) * (gameState?.prices?.[t as keyof StockPrices] || 0), 0))) >= (portfolio?.startingCapital || 0) ? "text-green-500" : "text-red-500"
+                      isAdmin ? "text-blue-400" : (
+                        ((portfolio?.cash || 0) + (Object.entries(portfolio?.shares || {}).reduce((acc: number, [t, q]) => acc + (q as number) * (gameState?.prices?.[t as keyof StockPrices] || 0), 0))) >= (portfolio?.startingCapital || 0) ? "text-green-500" : "text-red-500"
+                      )
                     )}>
-                      {((portfolio?.cash || 0) + (Object.entries(portfolio?.shares || {}).reduce((acc: number, [t, q]) => acc + (q as number) * (gameState?.prices?.[t as keyof StockPrices] || 0), 0))) >= (portfolio?.startingCapital || 0) ? '+' : ''}
-                      {(((portfolio?.cash || 0) + (Object.entries(portfolio?.shares || {}).reduce((acc: number, [t, q]) => acc + (q as number) * (gameState?.prices?.[t as keyof StockPrices] || 0), 0))) - (portfolio?.startingCapital || 0)).toLocaleString()}
+                      {isAdmin ? '' : (
+                        ((portfolio?.cash || 0) + (Object.entries(portfolio?.shares || {}).reduce((acc: number, [t, q]) => acc + (q as number) * (gameState?.prices?.[t as keyof StockPrices] || 0), 0))) >= (portfolio?.startingCapital || 0) ? '+' : ''
+                      )}
+                      {isAdmin 
+                        ? Math.floor((portfolio?.cash || 0) / TRADING_FEE)
+                        : (((portfolio?.cash || 0) + (Object.entries(portfolio?.shares || {}).reduce((acc: number, [t, q]) => acc + (q as number) * (gameState?.prices?.[t as keyof StockPrices] || 0), 0))) - (portfolio?.startingCapital || 0)).toLocaleString()
+                      }
                     </div>
                   </div>
                 </div>
 
+                {!isAdmin && (
                 <div className="bg-[#0a0a0a] p-4 border-2 border-[#2a2b2e] mb-8">
                   <h3 className="font-bold uppercase text-xs mb-2 text-gray-500">Konečné složení portfolia</h3>
                   <div className="flex gap-4">
@@ -2060,6 +2099,7 @@ export default function App() {
                     ))}
                   </div>
                 </div>
+                )}
 
                 <div className="bg-[#0a0a0a] p-4 border-2 border-[#2a2b2e] mb-8 max-h-[250px] overflow-y-auto">
                   <h3 className="font-bold uppercase text-xs mb-2 flex items-center justify-between text-yellow-500">

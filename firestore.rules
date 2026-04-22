@@ -43,7 +43,14 @@ service cloud.firestore {
       match /portfolios/{userId} {
         allow read: if isAuthenticated();
         allow create: if isAuthenticated() && request.auth.uid == userId;
-        allow update: if isAuthenticated() && request.auth.uid == userId;
+        allow update: if isAuthenticated() && (
+          request.auth.uid == userId ||
+          (
+            get(/databases/$(database)/documents/rooms/$(roomId)).data.createdBy == userId &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cash']) &&
+            request.resource.data.cash == resource.data.cash + 15
+          )
+        );
       }
     }
   }
