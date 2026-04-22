@@ -543,7 +543,7 @@ export default function App() {
     }, (err: any) => {
       console.error('Rooms Snapshot Error:', err);
       if (err.code === 'resource-exhausted') {
-        setError('Firebase Daily Quota Exceeded. The game will resume working tomorrow, or you can upgrade to the Blaze plan in Firebase Console.');
+        setError('Google Cloud Infrastructure Block: Your current database instance was created as a "Free Tier Edition" and cannot scale, even though you have the Blaze plan enabled. Please delete and recreate the database in Firebase Console.');
       }
     });
   }, [user]);
@@ -573,7 +573,7 @@ export default function App() {
       if (err.code === 'permission-denied') {
         setError('Market data access denied.');
       } else if (err.code === 'resource-exhausted') {
-        setError('Firebase Daily Quota Exceeded. The game will resume working tomorrow, or you can upgrade to the Blaze plan in Firebase Console.');
+        setError('Google Cloud Infrastructure Block: Your current database instance was created as a "Free Tier Edition" and cannot scale, even though you have the Blaze plan enabled. You must delete this specific database instance in the Firebase Console and click Create Database again to unlock your Blaze limits.');
       }
     });
 
@@ -612,13 +612,13 @@ export default function App() {
           trades: []
         };
         setDoc(doc(db, 'rooms', roomId, 'portfolios', user.uid), initialPortfolio).catch((err: any) => {
-          if (err.code === 'resource-exhausted') setError('Firebase Daily Quota Exceeded. The game will resume working tomorrow, or you can upgrade to the Blaze plan in Firebase Console.');
+          if (err.code === 'resource-exhausted') setError('Google Cloud Infrastructure Block: Your current database instance was created as a "Free Tier Edition" and cannot scale, even though you have the Blaze plan enabled. Please delete and recreate the database in Firebase Console.');
         });
       }
     }, (err: any) => {
       console.error('Portfolio Snapshot Error:', err);
       if (err.code === 'resource-exhausted') {
-        setError('Firebase Daily Quota Exceeded. The game will resume working tomorrow, or you can upgrade to the Blaze plan in Firebase Console.');
+        setError('Google Cloud Infrastructure Block: Your current database instance was created as a "Free Tier Edition" and cannot scale, even though you have the Blaze plan enabled. Please delete and recreate the database in Firebase Console.');
       } else if (err.code === 'permission-denied') {
         setError('Portfolio access denied.');
       }
